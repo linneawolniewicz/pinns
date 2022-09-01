@@ -45,7 +45,11 @@ class PINN(tf.keras.Model):
         
         f_boundary: (boundary_batchsize, 1) shaped arrays : This is the target data for the boundary value inputs
         
-    Outputs: total_loss, pinn_loss, boundary_loss
+        alpha = weight on pinn_loss
+        
+        beta = weight on boundary_loss
+        
+    Outputs: sum_loss, pinn_loss, boundary_loss
     '''
     def train_step(self, p, r, p_boundary, r_boundary, f_boundary, alpha=1, beta=1):
         with tf.GradientTape(persistent=True) as t2: 
@@ -83,17 +87,29 @@ class PINN(tf.keras.Model):
         P_predict: (N, 2) array: Input data for entire spatial and temporal domain. Used for vizualization for
         predictions at the end of each epoch. Michael created a very pretty video file with it. 
         
-        batchsize: batchsize for (p, r) in train step
+        size: size of the prediction data (i.e. len(p) and len(r))
         
-        initial_batchsize: batchsize for (x_initial, t_initial) in train step
+        alpha = weight on pinn_loss
+        
+        beta = weight on boundary_loss
+        
+        batchsize: batchsize for (p, r) in train step
         
         boundary_batchsize: batchsize for (x_lower, t_boundary) and (x_upper, t_boundary) in train step
         
         epochs: epochs
+        
+        save: Whether or not to save the model to a checkpoint every 10 epochs
+        
+        load_epoch: If -1, a saved model will not be loaded. Otherwise, the model will be loaded from the provided epoch
     
-    Outputs: Losses for each equation (PDE, Initial Value, Boundary Value), and predictions for each epoch.
+    Outputs: Losses for each equation (Total, PDE, Boundary Value), and predictions for each epoch.
     '''
-    def fit(self, P_predict, size, alpha=1, beta=1, batchsize=64, boundary_batchsize=16, epochs=20):
+    def fit(self, P_predict, size, alpha=1, beta=1, batchsize=64, boundary_batchsize=16, epochs=20, save=True, load_epoch=-1):
+        # If load == True, load the weights
+        if load_epoch != -1:
+            self.load_weights('./ckpts/pinn_epoch_' + str(load_epoch))
+        
         # Initialize losses as zeros
         steps_per_epoch = np.ceil(self.n_samples / batchsize).astype(int)
         total_pinn_loss = np.zeros((epochs, ))
@@ -138,6 +154,10 @@ class PINN(tf.keras.Model):
             
             # Get prediction variable loss by the predict function (below)
             total_predictions[:, :, epoch] = self.predict_epoch(P_predict, size)
+            
+            # If the epoch is a multiple of 10, save to a checkpoint
+            if (epoch%10 == 0) & (save == True):
+                self.save_weights('./ckpts/pinn_epoch_' + str(epoch), overwrite=True, save_format=None, options=None)
         
         # Return epoch losses
         return total_loss, total_pinn_loss, total_boundary_loss, total_predictions
@@ -234,11 +254,11 @@ def main():
 
     # Define hyperparameters
     alpha = 1 # pinn_loss weight
-    beta = 10 # boundary_loss weight
-    lr = 3e-3
-    batchsize = 2048
+    beta = 15 # boundary_loss weight
+    lr = 3e-4
+    batchsize = 1032
     boundary_batchsize = 256
-    epochs = 300
+    epochs = 600
     optimizer=tf.keras.optimizers.Adam(learning_rate=lr)
 
     # Initialize, compile, and fit the PINN
