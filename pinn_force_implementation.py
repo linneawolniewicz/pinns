@@ -105,11 +105,11 @@ class PINN(tf.keras.Model):
         
         load_epoch: If -1, a saved model will not be loaded. Otherwise, the model will be loaded from the provided epoch
         
-        thrshold: If boundary and pinn loss fall below thrshold, quit training
+        threshold: If boundary and pinn loss fall below thrshold, quit training
     
     Outputs: Losses for each equation (Total, PDE, Boundary Value), and predictions for each epoch.
     '''
-    def fit(self, P_predict, size, alpha=1, beta=1, batchsize=64, boundary_batchsize=16, epochs=20, save=True, load_epoch=-1, thrshold=0.5):
+    def fit(self, P_predict, size, alpha=1, beta=1, batchsize=64, boundary_batchsize=16, epochs=20, save=False, load_epoch=-1, threshold=1):
         # If load == True, load the weights
         if load_epoch != -1:
             self.load_weights('./ckpts/pinn_epoch_' + str(load_epoch))
@@ -164,7 +164,7 @@ class PINN(tf.keras.Model):
                 self.save_weights('./ckpts/pinn_epoch_' + str(epoch), overwrite=True, save_format=None, options=None)
                 
             # If boundary_loss falls below certain threshold, break out the loop
-            if (total_boundary_loss[epoch] < thrshold) & (total_pinn_loss[epoch] < thrshold):
+            if (total_boundary_loss[epoch] < threshold) & (total_pinn_loss[epoch] < threshold):
                 break
         
         # Return epoch losses
@@ -221,7 +221,7 @@ class PINN(tf.keras.Model):
     @tf.function
     def tf_call(self, inputs): 
         return self.call(inputs, training=True)
-        
+    
 ###########################################################################################
 
 def main():
@@ -254,23 +254,21 @@ def main():
 
     # Define neural network. Note: 2 inputs- (p, r), 1 output- f(r, p)
     inputs = tf.keras.Input((2))
-    x_ = tf.keras.layers.Dense(100, activation='tanh')(inputs)
-    x_ = tf.keras.layers.Dense(500, activation='tanh')(x_)
-    x_ = tf.keras.layers.Dense(500, activation='tanh')(x_)
-    x_ = tf.keras.layers.Dense(100, activation='tanh')(x_)
+    x_ = tf.keras.layers.Dense(1000, activation='tanh')(inputs)
+    x_ = tf.keras.layers.Dense(1000, activation='tanh')(x_)
     outputs = tf.keras.layers.Dense(1, activation='linear')(x_) 
 
     # Define hyperparameters
     alpha = 1 # pinn_loss weight
-    beta = 15 # boundary_loss weight
-    lr = 3e-4
-    batchsize = 1032
+    beta = 30 # boundary_loss weight
+    lr = 3e-3
+    batchsize = 512
     boundary_batchsize = 256
-    epochs = 2000
+    epochs = 600
     optimizer=tf.keras.optimizers.Adam(learning_rate=lr)
-    save = True
+    save = False
     load_epoch = -1
-    thrshold = 1
+    threshold = 1
 
     # Initialize and compile and fit the PINN
     pinn = PINN(inputs=inputs, outputs=outputs, lower_bound=lb, upper_bound=ub, p=p[:, 0], r=r[:, 0], 
@@ -278,8 +276,8 @@ def main():
     pinn.compile(optimizer=optimizer)
     total_loss, pinn_loss, boundary_loss, predictions = pinn.fit(P_predict=P_star, alpha=alpha, beta=beta, batchsize=batchsize, 
                                                                  boundary_batchsize=boundary_batchsize, epochs=epochs, size=size, 
-                                                                 save=save, load_epoch=load_epoch, thrshold=thrshold)
-
+                                                                 save=save, load_epoch=load_epoch, threshold=threshold)
+    
     # Predict f at the boundary r_HP
     r_boundary = np.zeros((p.shape[0], 1))
     r_boundary[:] = ub[1]
