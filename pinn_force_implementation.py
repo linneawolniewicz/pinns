@@ -1,3 +1,13 @@
+# Imports
+import numpy as np
+import scipy.io
+import tensorflow as tf
+from pyDOE import lhs
+import matplotlib
+import matplotlib.pyplot as plt
+import pickle as pkl
+tf.config.list_physical_devices(device_type=None)
+
 '''
 Description: Defines the class for a PINN model implementing train_step, fit, and predict functions. Note, it is necessary 
 to design each PINN seperately for each system of PDEs since the train_step is customized for a specific system. 
@@ -186,21 +196,7 @@ class PINN(tf.keras.Model):
         
 ###########################################################################################
 
-def main:
-    # Imports
-    import numpy as np
-    import scipy.io
-    import tensorflow as tf
-
-    from pyDOE import lhs
-
-    import matplotlib
-    import matplotlib.pyplot as plt
-
-    import pickle as pkl
-
-    tf.config.list_physical_devices(device_type=None)
-
+def main():
     # Constants  
     M = 0.938 # GeV
     gamma = -2.5 # Between -2 and -3
@@ -228,26 +224,21 @@ def main:
     P, R = np.meshgrid(p, r)
     P_star = np.hstack((P.flatten()[:,None], R.flatten()[:,None]))
 
-    # Check inputs
-    #print(f'r: {r.shape}, p: {p.shape}, T: {T.shape}, f_boundary: {f_boundary.shape}, P_star: {P_star.shape}, lb: {lb}, ub:{ub}')
-
-    #plt.plot(p, f_boundary)
-    #plt.xlabel("p (ln(GeV))")
-    #plt.ylabel("f(r_HP, p)")
-
     # Define neural network. Note: 2 inputs- (p, r), 1 output- f(r, p)
     inputs = tf.keras.Input((2))
-    x_ = tf.keras.layers.Dense(1000, activation='tanh')(inputs)
-    x_ = tf.keras.layers.Dense(1000, activation='tanh')(x_)
+    x_ = tf.keras.layers.Dense(100, activation='tanh')(inputs)
+    x_ = tf.keras.layers.Dense(500, activation='tanh')(x_)
+    x_ = tf.keras.layers.Dense(500, activation='tanh')(x_)
+    x_ = tf.keras.layers.Dense(100, activation='tanh')(x_)
     outputs = tf.keras.layers.Dense(1, activation='linear')(x_) 
 
     # Define hyperparameters
     alpha = 1 # pinn_loss weight
     beta = 10 # boundary_loss weight
     lr = 3e-3
-    batchsize = 1032
+    batchsize = 2048
     boundary_batchsize = 256
-    epochs = 2000
+    epochs = 300
     optimizer=tf.keras.optimizers.Adam(learning_rate=lr)
 
     # Initialize, compile, and fit the PINN
@@ -290,6 +281,6 @@ def main:
     with open('./figures/f_predict.pkl', 'wb') as file:
         pkl.dump(f_predict, file)
 
-if __main__=="__main__":
+if __name__=="__main__":
     main()
     
