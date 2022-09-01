@@ -8,6 +8,8 @@ import matplotlib.pyplot as plt
 import pickle as pkl
 tf.config.list_physical_devices(device_type=None)
 
+###################################################################################
+
 '''
 Description: Defines the class for a PINN model implementing train_step, fit, and predict functions. Note, it is necessary 
 to design each PINN seperately for each system of PDEs since the train_step is customized for a specific system. 
@@ -102,10 +104,12 @@ class PINN(tf.keras.Model):
         save: Whether or not to save the model to a checkpoint every 10 epochs
         
         load_epoch: If -1, a saved model will not be loaded. Otherwise, the model will be loaded from the provided epoch
+        
+        thrshold: If boundary and pinn loss fall below thrshold, quit training
     
     Outputs: Losses for each equation (Total, PDE, Boundary Value), and predictions for each epoch.
     '''
-    def fit(self, P_predict, size, alpha=1, beta=1, batchsize=64, boundary_batchsize=16, epochs=20, save=True, load_epoch=-1):
+    def fit(self, P_predict, size, alpha=1, beta=1, batchsize=64, boundary_batchsize=16, epochs=20, save=True, load_epoch=-1, thrshold=0.5):
         # If load == True, load the weights
         if load_epoch != -1:
             self.load_weights('./ckpts/pinn_epoch_' + str(load_epoch))
@@ -158,6 +162,10 @@ class PINN(tf.keras.Model):
             # If the epoch is a multiple of 10, save to a checkpoint
             if (epoch%10 == 0) & (save == True):
                 self.save_weights('./ckpts/pinn_epoch_' + str(epoch), overwrite=True, save_format=None, options=None)
+                
+            # If boundary_loss falls below certain threshold, break out the loop
+            if (total_boundary_loss[epoch] < thrshold) & (total_pinn_loss[epoch] < thrshold):
+                break
         
         # Return epoch losses
         return total_loss, total_pinn_loss, total_boundary_loss, total_predictions
@@ -258,15 +266,19 @@ def main():
     lr = 3e-4
     batchsize = 1032
     boundary_batchsize = 256
-    epochs = 600
+    epochs = 2000
     optimizer=tf.keras.optimizers.Adam(learning_rate=lr)
+    save = True
+    load_epoch = -1
+    thrshold = 1
 
-    # Initialize, compile, and fit the PINN
+    # Initialize and compile and fit the PINN
     pinn = PINN(inputs=inputs, outputs=outputs, lower_bound=lb, upper_bound=ub, p=p[:, 0], r=r[:, 0], 
                 f_boundary=f_boundary[:, 0], size=size)
     pinn.compile(optimizer=optimizer)
     total_loss, pinn_loss, boundary_loss, predictions = pinn.fit(P_predict=P_star, alpha=alpha, beta=beta, batchsize=batchsize, 
-                                                     boundary_batchsize=boundary_batchsize, epochs=epochs, size=size)
+                                                                 boundary_batchsize=boundary_batchsize, epochs=epochs, size=size, 
+                                                                 save=save, load_epoch=load_epoch, thrshold=thrshold)
 
     # Predict f at the boundary r_HP
     r_boundary = np.zeros((p.shape[0], 1))
