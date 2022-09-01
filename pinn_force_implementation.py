@@ -264,9 +264,9 @@ def main():
     lr = 3e-3
     batchsize = 512
     boundary_batchsize = 256
-    epochs = 600
+    epochs = 2000
     optimizer=tf.keras.optimizers.Adam(learning_rate=lr)
-    save = False
+    save = True
     load_epoch = -1
     threshold = 1
 
@@ -277,14 +277,6 @@ def main():
     total_loss, pinn_loss, boundary_loss, predictions = pinn.fit(P_predict=P_star, alpha=alpha, beta=beta, batchsize=batchsize, 
                                                                  boundary_batchsize=boundary_batchsize, epochs=epochs, size=size, 
                                                                  save=save, load_epoch=load_epoch, threshold=threshold)
-    
-    # Predict f at the boundary r_HP
-    r_boundary = np.zeros((p.shape[0], 1))
-    r_boundary[:] = ub[1]
-    f_pred_boundary = pinn.predict(p, r_boundary).numpy()
-
-    # Predict f at the final epoch for all (p, r)
-    f_predict = pinn.tf_call(P_star).numpy()
 
     # Save PINN outputs
     with open('./figures/total_loss.pkl', 'wb') as file:
@@ -304,12 +296,6 @@ def main():
 
     with open('./figures/p.pkl', 'wb') as file:
         pkl.dump(p, file)
-
-    with open('./figures/f_pred_boundary.pkl', 'wb') as file:
-        pkl.dump(f_pred_boundary, file)
-
-    with open('./figures/f_predict.pkl', 'wb') as file:
-        pkl.dump(f_predict, file)
 
 if __name__=="__main__":
     main()
