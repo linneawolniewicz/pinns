@@ -17,17 +17,17 @@ else:
 
 # Sherpa parameters
 parameters = [
-    sherpa.Ordinal(name='beta', range=[5, 10, 15, 20, 30]),
-    sherpa.Continuous(name='lr', range=[3e-5, 3e-1], scale='log'),
+    sherpa.Ordinal(name='alpha', range=[0.1, 0.2, 0.3 0.4, 0.5]),
+    sherpa.Ordinal(name='weight_change', range=[1.001, 1.01, 1.1]),
     sherpa.Ordinal(name='batchsize', range=[256, 512, 1032, 2048]),
-    sherpa.Ordinal(name='boundary_batchsize', range=[64, 128, 256]),
-    sherpa.Ordinal(name='num_hidden_units', range=[100, 500, 1000]),
+    sherpa.Ordinal(name='boundary_batchsize', range=[64, 128, 256, 512]),
+    sherpa.Ordinal(name='num_hidden_units', range=[100, 500, 1000, 2000]),
     sherpa.Choice(name='activation', range=['relu', 'tanh'])
 ]
 
 algorithm = sherpa.algorithms.RandomSearch(max_num_trials=50)
-env = '/home/linneamw/sadow_lts/personal/linneamw/anaconda3/envs/pinns' # to-do: check this is right env path
-opt = '-N 1 -J s_tbdxa -p gpu --gres=gpu:1 --constraint="volta" --mem=32gb -c 8 -t 2-23:00:00' # to-do: figure out what value to make this
+env = '/home/linneamw/sadow_lts/personal/linneamw/anaconda3/envs/pinns'
+opt = '-N 1 -J sherpa_pinns -p gpu --gres=gpu:1 --constraint="volta" --mem=32gb -c 8 -t 2-23:00:00'
 
 scheduler = sherpa.schedulers.SLURMScheduler(environment=env,
                                              submit_options=opt,
