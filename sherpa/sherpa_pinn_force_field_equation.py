@@ -7,7 +7,7 @@ import sherpa.algorithms
 import tensorflow as tf
 
 # Set-up output directory
-output_dir = '/home/linneamw/sadow_lts/personal/linneamw/pinns/sherpa'
+output_dir = '/home/linneamw/sadow_lts/personal/linneamw/pinns/sherpa/output'
 if os.path.isdir(output_dir):
     print('Warning: Overwriting directory {}'.format(output_dir))
     import shutil
@@ -17,15 +17,20 @@ else:
 
 # Sherpa parameters
 parameters = [
-    sherpa.Ordinal(name='alpha', range=[0.1, 0.2, 0.3 0.4, 0.5]),
-    sherpa.Ordinal(name='weight_change', range=[1.001, 1.01, 1.1]),
+    sherpa.Continuous(name='lr_decay', range=[0.8, 1.0]),
+    sherpa.Discrete(name='patience', range=[2, 5]),
+    sherpa.Continuous(name='alpha', range=[0.1, 0.5]),
+    sherpa.Continuous(name='weight_change', range=[1.0, 1.5]),
     sherpa.Ordinal(name='batchsize', range=[256, 512, 1032, 2048]),
     sherpa.Ordinal(name='boundary_batchsize', range=[64, 128, 256, 512]),
-    sherpa.Ordinal(name='num_hidden_units', range=[100, 500, 1000, 2000]),
-    sherpa.Choice(name='activation', range=['relu', 'tanh'])
+    sherpa.Discrete(name='num_hidden_units', range=[10, 500]),
+    sherpa.Discrete(name='num_layers', range=[2, 10]),
+    sherpa.Choice(name='activation', range=['relu', 'tanh']),
+    sherpa.Choice(name='loss', range=['mse', 'mae'])
 ]
 
-algorithm = sherpa.algorithms.RandomSearch(max_num_trials=50)
+n_trials = 2
+algorithm = sherpa.algorithms.RandomSearch(max_num_trials=n_trials)
 env = '/home/linneamw/sadow_lts/personal/linneamw/anaconda3/envs/pinns'
 opt = '-N 1 -J sherpa_pinns -p gpu --gres=gpu:1 --constraint="volta" --mem=32gb -c 8 -t 2-23:00:00'
 
@@ -44,6 +49,6 @@ results = sherpa.optimize(parameters=parameters,
                           max_concurrent=15,
                           verbose=1,
                           db_port=8905,
-                          mongodb_args={'bind_ip_all': ''}) # to-do: what are verbose, db_port, mongodb_args, and max_concurrent??
+                          mongodb_args={'bind_ip_all': ''})
 
 pkl.dump(results, open(output_dir + '/results.pkl', 'wb'))
