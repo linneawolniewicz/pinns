@@ -6,6 +6,7 @@ import pickle as pkl
 import sherpa.schedulers
 import sherpa.algorithms
 import time
+import pandas as pd
 tf.config.list_physical_devices(device_type=None)
 
 ###################################################################################
@@ -50,7 +51,7 @@ class PINN(tf.keras.Model):
         
     Outputs: sum_loss, pinn_loss, boundary_loss
     '''
-    def train_step(self, p, r, p_boundary, r_boundary, f_boundary, loss, alpha):
+    def train_step(self, p, r, p_boundary, r_boundary, f_boundary, alpha):
         with tf.GradientTape(persistent=True) as t2: 
             with tf.GradientTape(persistent=True) as t1: 
                 # Forward pass P (PINN data)
@@ -62,14 +63,13 @@ class PINN(tf.keras.Model):
                 f_pred_boundary = self.tf_call(P_boundary)
 
                 # Calculate boundary loss
-                if loss=='mse': boundary_loss = tf.math.reduce_mean(tf.math.square(f_pred_boundary - f_boundary))
-                elif loss=='mae': boundary_loss = tf.math.reduce_mean(tf.math.abs(f_pred_boundary - f_boundary))
+                boundary_loss = tf.math.reduce_mean(tf.math.abs(f_pred_boundary - f_boundary))
 
             # Calculate first-order PINN gradients
             f_p = t1.gradient(f, p)
             f_r = t1.gradient(f, r)
             
-            pinn_loss = self.pinn_loss(p, r, f_p, f_r, loss)
+            pinn_loss = self.pinn_loss(p, r, f_p, f_r)
             total_loss = alpha*pinn_loss + (1-alpha)*boundary_loss
         
         # Backpropagation
@@ -85,8 +85,6 @@ class PINN(tf.keras.Model):
     Inputs: 
         P_predict: (N, 2) array: Input data for entire spatial and temporal domain. Used for vizualization for
         predictions at the end of each epoch. Michael created a very pretty video file with it. 
-        
-        loss: what type of loss function to use, MSE or MAE
         
         alpha: weight on pinn_loss
         
@@ -117,7 +115,7 @@ class PINN(tf.keras.Model):
     
     Outputs: Losses for each equation (Total, PDE, Boundary Value), and predictions for each epoch.
     '''
-    def fit(self, P_predict, loss='mse', alpha=1, batchsize=64, boundary_batchsize=16, epochs=20, lr=3e-3, size=256, 
+    def fit(self, P_predict, alpha=1, batchsize=64, boundary_batchsize=16, epochs=20, lr=3e-3, size=256, 
             save=False, load_epoch=-1, lr_decay=-1, weight_change=-1, patience=3, filename=''):
         # If load == True, load the weights
         if load_epoch != -1:
@@ -158,14 +156,13 @@ class PINN(tf.keras.Model):
                 r_boundary = tf.Variable(upper_bound, dtype=tf.float32)
                 
                 # Pass variables through the model via train_step and get losses
-                losses = self.train_step(p, r, p_boundary, r_boundary, f_boundary, loss, alpha)
+                losses = self.train_step(p, r, p_boundary, r_boundary, f_boundary, alpha)
                 pinn_loss[step] = losses[0]
                 boundary_loss[step] = losses[1]
             
             # Calculate and print total losses for the epoch
             total_pinn_loss[epoch] = np.sum(pinn_loss)
             total_boundary_loss[epoch] = np.sum(boundary_loss)
-            # print(f'Training loss for epoch {epoch}: pinn: {total_pinn_loss[epoch]:.4f}, boundary: {total_boundary_loss[epoch]:.4f}, total: {(total_boundary_loss[epoch]+total_pinn_loss[epoch]):.4f}')
             
             # Predict
             predictions[:, :, epoch] = self.predict(P_predict, size)
@@ -183,7 +180,6 @@ class PINN(tf.keras.Model):
                 # If pinn loss hasn't decreased for the past 2 epochs, increase alpha by weight_change
                 if (weight_change != -1) & (not hasDecreased):
                     alpha = np.tanh(weight_change*alpha)
-                    # print(f'New learning rate {lr} and alpha {alpha}') 
 
             # If the epoch is a multiple of 10, save to a checkpoint
             if (epoch%10 == 0) & (save == True):
@@ -219,7 +215,7 @@ class PINN(tf.keras.Model):
     
     # pinn_loss calculates the PINN loss by calculating the MAE of the pinn function
     @tf.function
-    def pinn_loss(self, p, r, f_p, f_r, loss): # To-do: add loss pass-through!
+    def pinn_loss(self, p, r, f_p, f_r): # To-do: add loss pass-through!
         # Note: p and r are taken out of logspace for the PINN calculation
         p = tf.math.exp(p) # GeV/c
         r = tf.math.exp(r) # km
@@ -233,8 +229,7 @@ class PINN(tf.keras.Model):
         k = beta*k_1*k_2
         
         # Calculate physics loss
-        if loss=='mae': l_f = tf.math.reduce_mean(tf.math.abs(f_r + (tf.math.divide(R*V, 3*k) * f_p)))
-        elif loss=='mse': l_f = tf.math.reduce_mean(tf.math.square(f_r + (tf.math.divide(R*V, 3*k) * f_p)))
+        l_f = tf.math.reduce_mean(tf.math.abs(f_r + (tf.math.divide(R*V, 3*k) * f_p)))
         
         return l_f
     
@@ -282,13 +277,13 @@ def main():
         sherpa.Continuous(name='weight_change', range=[1.0, 1.5]),
         sherpa.Ordinal(name='batchsize', range=[256, 512, 1032, 2048]),
         sherpa.Ordinal(name='boundary_batchsize', range=[64, 128, 256, 512]),
-        sherpa.Discrete(name='num_hidden_units', range=[10, 500]),
+        sherpa.Discrete(name='num_hidden_units', range=[10, 300]),
         sherpa.Discrete(name='num_layers', range=[2, 10]),
         sherpa.Choice(name='activation', range=['relu', 'tanh']),
         sherpa.Choice(name='loss', range=['mse', 'mae'])
     ]
     
-    n_run = 500
+    n_run = 100
     study = sherpa.Study(
         parameters=parameters,
         algorithm=sherpa.algorithms.RandomSearch(max_num_trials=n_run),
@@ -297,10 +292,11 @@ def main():
 
     # Hyperparameters
     lr = 3e-2
-    epochs = 600
+    epochs = 700
     save = False
     load_epoch = -1
     filename = ''
+    activation = 'selu'
     
     # run Sherpa experiment
     dfs = []
@@ -316,8 +312,6 @@ def main():
         weight_change = trial.parameters['weight_change']
         num_layers = trial.parameters['num_layers']
         num_hidden_units = trial.parameters['num_hidden_units']
-        activation = trial.parameters['activation']
-        loss = trial.parameters['loss']
 
         # Create model
         inputs = tf.keras.Input((2))
@@ -325,44 +319,47 @@ def main():
         for i in range(num_layers):
             x_ = tf.keras.layers.Dense(num_hidden_units, activation=activation)(x_)
         outputs = tf.keras.layers.Dense(1, activation='linear')(x_) 
-        
-        
-        line = '===============================================\n'
-        line += f'Hyperparameters: layers {num_layers}, hidden units {num_hidden_units}, {loss}, {activation}, {batchsize}, {boundary_batchsize}, {weight_change}, {lr_decay}, {alpha}, {patience}' + '\n'
-
-        # num_iterations = 1
-        # for iteration in range(num_iterations):
-        #     training_error = model.fit(epochs=1)
-        #     validation_error = model.evaluate()
-        #     study.add_observation(trial=trial,
-        #                           iteration=iteration,
-        #                           objective=pinn_loss,
-        #                           context={'boundary_loss': boundary_loss}
                                   
         # Train the PINN
         pinn = PINN(inputs=inputs, outputs=outputs, lower_bound=lb, upper_bound=ub, p=p[:, 0], r=r[:, 0], 
                     f_boundary=f_boundary[:, 0], size=size)
-        pinn_loss, boundary_loss, predictions = pinn.fit(P_predict=P_star, loss=loss, alpha=alpha, batchsize=batchsize, boundary_batchsize=boundary_batchsize,
+        pinn_loss, boundary_loss, predictions = pinn.fit(P_predict=P_star, alpha=alpha, batchsize=batchsize, boundary_batchsize=boundary_batchsize,
                                                          epochs=epochs, lr=lr, size=size, save=save, load_epoch=load_epoch, lr_decay=lr_decay,
                                                          weight_change=weight_change, patience=patience, filename=filename)
         
+        # Save model output dataframe
+        df = pd.DataFrame()
+        df['trial_id'] = i,
+        df['num_layers'] = num_layers
+        df['num_hidden_units'] = num_hidden_units
+        df['batchsize'] = batchsize
+        df['boundary_batchsize'] = boundary_batchsize
+        df['weight_change'] = weight_change
+        df['lr_decay'] = lr_decay
+        df['alpha'] = alpha
+        df['patience'] = patience
+        df['epochs'] = epochs
+        df['lr'] = lr
+        df['activation'] = activation
+        df['final_boundary_loss'] = boundary_loss[-1]
+        df['final_pinn_loss'] = pinn_loss[-1]
+        dfs.append(df)
+        pd.concat(dfs).to_csv('./outputs/sherpa_' + str(n_run) + '.csv')
+        
+        # Pickle predictions and losses
+        with open('./pickles/pinn_loss_trial_id_' + str(i) + '.pkl', 'wb') as file:
+            pkl.dump(pinn_loss, file)
+        with open('./pickles/boundary_loss_trial_id_' + str(i) + '.pkl', 'wb') as file:
+            pkl.dump(boundary_loss, file)
+        with open('./pickles/predictions_trial_id_' + str(i) + '.pkl', 'wb') as file:
+            pkl.dump(predictions, file)
+        
         # Write progress.txt
         end = time.time()
-        line += "elapsed time         : {:.3f}".format(end - start) + '\n'
-        line += f'final boundary loss: {boundary_loss[-1]:.5f}, final pinn_loss: {pinn_loss[-1]:.5f}' + '\n'
+        line = '===============================================\n'
+        line += "Trial id: {}, elapsed time: {:.3f}".format(i, end - start) + '\n'
         with open('progress.txt', 'a') as f:
             f.write(line)
-        
-#         # Finish study
-#         study.add_observation(
-#                trial=trial,
-#                iteration=0,
-#                objective=pinn_loss,
-#                context={'boundary_loss': boundary_loss}
-#         )
-        
-#         study.finalize(trial)
-
 
 if __name__ == '__main__':
     main()

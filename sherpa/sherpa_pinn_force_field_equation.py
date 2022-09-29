@@ -25,8 +25,6 @@ parameters = [
     sherpa.Ordinal(name='boundary_batchsize', range=[64, 128, 256, 512]),
     sherpa.Discrete(name='num_hidden_units', range=[10, 500]),
     sherpa.Discrete(name='num_layers', range=[2, 10]),
-    sherpa.Choice(name='activation', range=['relu', 'tanh']),
-    sherpa.Choice(name='loss', range=['mse', 'mae'])
 ]
 
 n_trials = 2

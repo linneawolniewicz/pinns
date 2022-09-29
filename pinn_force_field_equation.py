@@ -295,81 +295,6 @@ def main():
                                                      epochs=epochs, lr=lr, size=size, save=save, load_epoch=load_epoch, lr_decay=lr_decay,
                                                      weight_change=weight_change, filename=filename)
 
-# ----------------------------------------------- for loop version -----------------------
-
-#     # Constants  
-#     m = 0.938 # GeV/c^2
-#     gamma = -3 # Between -2 and -3
-#     size = 512 # size of r, T, p, and f_boundary
-#     num_r = 40
-
-#     # Create intial r, p, and T predict data
-#     T = np.logspace(np.log10(0.001), np.log10(1000), size).flatten()[:,None] # GeV
-#     p = (np.sqrt((T+m)**2-m**2)).flatten()[:,None] # GeV/c
-#     r_mins = np.linspace(0.4, 120, num_r)
-#     print(r_mins)
-
-#     # Create boundary f data (f at r_HP) for boundary loss
-#     f_boundary = ((T + m)**gamma)/(p**2) # particles/(m^3 (GeV/c)^3)
-
-#     T = np.log(T)
-#     p = np.log(p)
-#     f_boundary = np.log(f_boundary)
-
-#     # Neural network. Note: 2 inputs- (p, r), 1 output- f(r, p)
-#     inputs = tf.keras.Input((2))
-#     x_ = tf.keras.layers.Dense(100, activation='relu')(inputs)
-#     x_ = tf.keras.layers.Dense(100, activation='relu')(x_)
-#     x_ = tf.keras.layers.Dense(100, activation='relu')(x_)
-#     x_ = tf.keras.layers.Dense(100, activation='relu')(x_)
-#     x_ = tf.keras.layers.Dense(100, activation='relu')(x_)
-#     x_ = tf.keras.layers.Dense(100, activation='relu')(x_)
-#     outputs = tf.keras.layers.Dense(1, activation='linear')(x_) 
-
-#     # Hyperparameters
-#     alpha = 1 # pinn_loss weight
-#     beta = 5 # boundary_loss weight
-#     lr = 3e-3
-#     lr_decay = 0.9
-#     batchsize = 1032
-#     boundary_batchsize = 256 
-#     epochs = 500
-#     save = True
-#     load_epoch = -1
-#     weight_change = 1.01
-
-#     boundaries = np.zeros((size, num_r+1)) 
-#     boundaries[:, 0] = f_boundary[:, 0]
-
-#     for i in range(num_r):
-#         print(f'Index {i} with r ranging from {r_mins[-(i+1)]} to {r_mins[-(i+2)]}')
-#         print(f'Boundary condition for pinn: {boundaries[:, i]}')
-#         r = (np.logspace(np.log10(r_mins[-(i+1)]*150e6), np.log10(r_mins[-i]*150e6), size)).flatten()[:,None] # km
-#         r = np.log(r)
-
-#         # Domain bounds
-#         lb = np.array([p[0], r[0]]) # (p, r) in (GeV, AU)
-#         ub = np.array([p[-1], r[-1]]) # (p, r) in (GeV, AU)
-
-#         # Flatten and transpose data for ML
-#         P, R = np.meshgrid(p, r)
-#         P_star = np.hstack((P.flatten()[:,None], R.flatten()[:,None]))
-
-#         pinn = PINN(inputs=inputs, outputs=outputs, lower_bound=lb, upper_bound=ub, p=p[:, 0], r=r[:, 0], 
-#                         f_boundary=boundaries[:, i], size=size)        
-
-#         pinn_loss, boundary_loss, predictions = pinn.fit(P_predict=P_star, alpha=alpha, beta=beta, batchsize=batchsize, 
-#                                                          boundary_batchsize=boundary_batchsize, epochs=epochs, lr=lr, size=size, 
-#                                                          save=save, load_epoch=load_epoch, lr_decay=lr_decay, weight_change=weight_change)
-
-#         boundaries[:, i+1] = predictions[:, :, -1].reshape((size, size))[-1, :]
-
-#         # Break if reached inner boundary of r
-#         if(num_r - (i+2))==0:
-#             break
-            
-# ----------------------------------------------- for loop version -----------------------
-
     # Save PINN outputs
     with open('./figures/pickles/pinn_loss_' + filename + '.pkl', 'wb') as file:
         pkl.dump(pinn_loss, file)
@@ -380,17 +305,17 @@ def main():
     with open('./figures/pickles/predictions_' + filename + '.pkl', 'wb') as file:
         pkl.dump(predictions, file)
 
-#     with open('./figures/pickles/f_boundary.pkl', 'wb') as file:
-#         pkl.dump(f_boundary, file)
+    with open('./figures/pickles/f_boundary.pkl', 'wb') as file:
+        pkl.dump(f_boundary, file)
 
-#     with open('./figures/pickles/p.pkl', 'wb') as file:
-#         pkl.dump(p, file)
+    with open('./figures/pickles/p.pkl', 'wb') as file:
+        pkl.dump(p, file)
 
-#     with open('./figures/pickles/T.pkl', 'wb') as file:
-#         pkl.dump(T, file)
+    with open('./figures/pickles/T.pkl', 'wb') as file:
+        pkl.dump(T, file)
 
-#     with open('./figures/pickles/r.pkl', 'wb') as file:
-#         pkl.dump(r, file)
+    with open('./figures/pickles/r.pkl', 'wb') as file:
+        pkl.dump(r, file)
 
 if __name__=="__main__":
     main()
