@@ -279,11 +279,9 @@ def main():
         sherpa.Ordinal(name='boundary_batchsize', range=[64, 128, 256, 512]),
         sherpa.Discrete(name='num_hidden_units', range=[10, 300]),
         sherpa.Discrete(name='num_layers', range=[2, 10]),
-        sherpa.Choice(name='activation', range=['relu', 'tanh']),
-        sherpa.Choice(name='loss', range=['mse', 'mae'])
     ]
     
-    n_run = 100
+    n_run = 200
     study = sherpa.Study(
         parameters=parameters,
         algorithm=sherpa.algorithms.RandomSearch(max_num_trials=n_run),
@@ -292,7 +290,7 @@ def main():
 
     # Hyperparameters
     lr = 3e-2
-    epochs = 700
+    epochs = 400
     save = False
     load_epoch = -1
     filename = ''
@@ -316,7 +314,7 @@ def main():
         # Create model
         inputs = tf.keras.Input((2))
         x_ = tf.keras.layers.Dense(num_hidden_units, activation=activation)(inputs)
-        for i in range(num_layers):
+        for _ in range(num_layers):
             x_ = tf.keras.layers.Dense(num_hidden_units, activation=activation)(x_)
         outputs = tf.keras.layers.Dense(1, activation='linear')(x_) 
                                   
@@ -344,7 +342,9 @@ def main():
         df['final_boundary_loss'] = boundary_loss[-1]
         df['final_pinn_loss'] = pinn_loss[-1]
         dfs.append(df)
-        pd.concat(dfs).to_csv('./outputs/sherpa_' + str(n_run) + '.csv')
+        
+        # Every 5 trials save dataframe
+        if i%5==0: pd.concat(dfs).to_csv('./outputs/sherpa_' + str(n_run) + '.csv')
         
         # Pickle predictions and losses
         with open('./pickles/pinn_loss_trial_id_' + str(i) + '.pkl', 'wb') as file:
@@ -360,6 +360,9 @@ def main():
         line += "Trial id: {}, elapsed time: {:.3f}".format(i, end - start) + '\n'
         with open('progress.txt', 'a') as f:
             f.write(line)
+            
+    # Save final dataframe
+    pd.concat(dfs).to_csv('./outputs/sherpa_' + str(n_run) + '.csv')
 
 if __name__ == '__main__':
     main()
