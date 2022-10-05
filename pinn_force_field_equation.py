@@ -47,7 +47,7 @@ class PINN(tf.keras.Model):
         
     Outputs: sum_loss, pinn_loss, boundary_loss
     '''
-    def train_step(self, p, r, p_boundary, r_boundary, f_boundary, alpha=1):
+    def train_step(self, p, r, p_boundary, r_boundary, f_boundary, alpha):
         with tf.GradientTape(persistent=True) as t2: 
             with tf.GradientTape(persistent=True) as t1: 
                 # Forward pass P (PINN data)
@@ -59,21 +59,19 @@ class PINN(tf.keras.Model):
                 f_pred_boundary = self.tf_call(P_boundary)
 
                 # Calculate boundary loss
-                if loss=='mse': boundary_loss = tf.math.reduce_mean(tf.math.square(f_pred_boundary - f_boundary))
-                elif loss=='mae': boundary_loss = tf.math.reduce_mean(tf.math.abs(f_pred_boundary - f_boundary))
+                boundary_loss = tf.math.reduce_mean(tf.math.abs(f_pred_boundary - f_boundary))
 
             # Calculate first-order PINN gradients
             f_p = t1.gradient(f, p)
             f_r = t1.gradient(f, r)
             
             pinn_loss = self.pinn_loss(p, r, f_p, f_r)
-            total_loss = alpha*pinn_loss + (1-alpha)*boundary_loss
+            total_loss = (1-alpha)*pinn_loss + alpha*boundary_loss
         
         # Backpropagation
         gradients = t2.gradient(total_loss, self.trainable_variables)
         self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
         
-        # Return losses
         return pinn_loss.numpy(), boundary_loss.numpy()
     
     '''
@@ -100,18 +98,21 @@ class PINN(tf.keras.Model):
         load_epoch: If -1, a saved model will not be loaded. Otherwise, the model will be 
         loaded from the provided epoch
         
-        lr_decay: If -1, learning rate will not be decayed. Otherwise, lr = lr_decay*lr if loss doesn't
-        decrease for 3 epochs
+        lr_decay: If -1, learning rate will not be decayed. Otherwise, lr = lr_decay*lr if loss hasn't 
+        decreased
         
-        weight_change: If -1, alpha will not be changed. Otherwise, alpha = weight_change*alpha if loss 
-        doesn't decrease for 3 epochs
+        alpha_decay: If -1, alpha will not be changed. Otherwise, alpha = alpha_decay*alpha if loss 
+        hasn't decreased
+        
+        patience: Number of epochs to check whether loss has decreased before updating lr or alpha
         
         filename: Name for the checkpoint file
     
     Outputs: Losses for each equation (Total, PDE, Boundary Value), and predictions for each epoch.
     '''
     def fit(self, P_predict, alpha=1, batchsize=64, boundary_batchsize=16, epochs=20, lr=3e-3, size=256, 
-            save=False, load_epoch=-1, lr_decay=-1, weight_change=-1, filename='pinn_epoch_'):
+            save=False, load_epoch=-1, lr_decay=-1, alpha_decay=-1, patience=3, filename=''):
+        
         # If load == True, load the weights
         if load_epoch != -1:
             name = './ckpts/pinn_' + filename + '_epoch_' + str(load_epoch)
@@ -150,41 +151,37 @@ class PINN(tf.keras.Model):
                 upper_bound[:] = self.upper_bound[1]
                 r_boundary = tf.Variable(upper_bound, dtype=tf.float32)
                 
-                # Pass variables through the model via train_step and get losses
+                # Train and get loss
                 losses = self.train_step(p, r, p_boundary, r_boundary, f_boundary, alpha)
                 pinn_loss[step] = losses[0]
                 boundary_loss[step] = losses[1]
             
-            # Calculate and print total losses for the epoch
+            # Calculate total epoch loss
             total_pinn_loss[epoch] = np.sum(pinn_loss)
             total_boundary_loss[epoch] = np.sum(boundary_loss)
-            print(f'Training loss for epoch {epoch}: pinn: {total_pinn_loss[epoch]:.4f}, boundary: {total_boundary_loss[epoch]:.4f}, total: {(total_boundary_loss[epoch]+total_pinn_loss[epoch]):.4f}')
+            print(f'Epoch {epoch}. Current alpha: {alpha:.4f}, lr: {lr:.4f}. Training losses: pinn: {total_pinn_loss[epoch]:.4f}, ' +
+                  f'boundary: {total_boundary_loss[epoch]:.4f}, weighted total: {((alpha*total_boundary_loss[epoch])+((1-alpha)*total_pinn_loss[epoch])):.4f}')
             
-            # Predict
             predictions[:, :, epoch] = self.predict(P_predict, size)
             
+            # Decay lr if loss has decreased since the last patience epoch
+            if (epoch > patience):
+                hasntDecreased = False
+                if (total_pinn_loss[epoch] + total_boundary_loss[epoch]) > (total_pinn_loss[epoch-patience] + total_boundary_loss[epoch-patience]):
+                    hasntDecreased = True
+                        
+                if (lr_decay != -1) & hasntDecreased:
+                    lr = lr_decay*lr
+
+            # Decrease alpha each epoch
+            if alpha_decay != -1:
+                alpha = alpha_decay*alpha
+
             # If the epoch is a multiple of 10, save to a checkpoint
             if (epoch%10 == 0) & (save == True):
                 name = './ckpts/pinn_' + filename + '_epoch_' + str(epoch)
                 self.save_weights(name, overwrite=True, save_format=None, options=None)
-            
-            # Determine if loss has decreased for the past 2 or 5 epochs
-            if (epoch > 3):
-                isDecreasingFor2 = False
-                for i in range(2):
-                    if (total_pinn_loss[epoch-i] + total_boundary_loss[epoch-i]) < (total_pinn_loss[epoch-(i+1)] + total_boundary_loss[epoch-(i+1)]):
-                        isDecreasingFor2 = True
-                        
-                # If loss hasn't decreased for the past 2 epochs, decrease lr by lr_decay
-                if (lr_decay != -1) & (not isDecreasingFor2):
-                    lr = lr_decay*lr
-
-                # If pinn loss hasn't decreased for the past 2 epochs, increase alpha by weight_change
-                if (weight_change != -1) & (not isDecreasingFor2):
-                    alpha = np.tanh(weight_change*alpha)
-                    print(f'New learning rate {lr} and alpha {alpha}') 
         
-        # Return epoch losses
         return total_pinn_loss, total_boundary_loss, predictions
     
     # Predict for some P's the value of the neural network f(r, p)
@@ -205,7 +202,6 @@ class PINN(tf.keras.Model):
             # Pass prediction data through the model
             preds[start_idx:end_idx, :] = self.tf_call(P[start_idx:end_idx, :]).numpy()
         
-        # Return f
         return preds
     
     def evaluate(self, ): 
@@ -213,7 +209,7 @@ class PINN(tf.keras.Model):
     
     # pinn_loss calculates the PINN loss by calculating the MAE of the pinn function
     @tf.function
-    def pinn_loss(self, p, r, f_p, f_r): 
+    def pinn_loss(self, p, r, f_p, f_r): # To-do: add loss pass-through!
         # Note: p and r are taken out of logspace for the PINN calculation
         p = tf.math.exp(p) # GeV/c
         r = tf.math.exp(r) # km
@@ -227,8 +223,7 @@ class PINN(tf.keras.Model):
         k = beta*k_1*k_2
         
         # Calculate physics loss
-        # l_f = tf.math.reduce_mean(tf.math.abs(f_r + (tf.math.divide(R*V, 3*k) * f_p)))
-        l_f = tf.math.reduce_mean(tf.math.square(f_r + (tf.math.divide(R*V, 3*k) * f_p)))
+        l_f = tf.math.reduce_mean(tf.math.abs(f_r + (tf.math.divide(R*V, 3*k) * f_p)))
         
         return l_f
     
@@ -244,15 +239,14 @@ def main():
     m = 0.938 # GeV/c^2
     gamma = -3 # Between -2 and -3
     size = 512 # size of r, T, p, and f_boundary
-    r_lims = [119, 120]
-    T_lims = [0.001, 1000]
+    au = 150e6 # 150e6 m/AU
+    r_limits = [119, 120]
+    T_limits = [0.001, 1000]
 
-    # Create intial r, p, and T predict data
-    T = np.logspace(np.log10(T_lims[0]), np.log10(T_lims[1]), size).flatten()[:,None] # GeV
+    # Create data
+    T = np.logspace(np.log10(T_limits[0]), np.log10(T_limits[1]), size).flatten()[:, None] # GeV
     p = (np.sqrt((T+m)**2-m**2)).flatten()[:,None] # GeV/c
-    r = np.logspace(np.log10(r_lims[0]*150e6), np.log10(r_lims[1]*150e6), size).flatten()[:,None] # km
-
-    # Create boundary f data (f at r_HP) for boundary loss
+    r = np.logspace(np.log10(r_limits[0]*au), np.log10(r_limits[1]*au), size).flatten()[:, None] # km
     f_boundary = ((T + m)**gamma)/(p**2) # particles/(m^3 (GeV/c)^3)
 
     # Take the log of all input data
@@ -277,23 +271,24 @@ def main():
     outputs = tf.keras.layers.Dense(1, activation='linear')(x_) 
 
     # Hyperparameters
-    alpha = 0.1
+    alpha = 0.9
+    alpha_decay = 0.998
     lr = 3e-2
     lr_decay = 0.95
+    patience = 10
     batchsize = 1032
-    boundary_batchsize = 128
-    epochs = 3000
-    save = True
+    boundary_batchsize = 256
+    epochs = 300
+    save = False
     load_epoch = -1
-    weight_change = 1.1
-    filename = '3hundred_relu'
+    filename = ''
 
     # Initialize and fit the PINN
     pinn = PINN(inputs=inputs, outputs=outputs, lower_bound=lb, upper_bound=ub, p=p[:, 0], r=r[:, 0], 
                 f_boundary=f_boundary[:, 0], size=size)
     pinn_loss, boundary_loss, predictions = pinn.fit(P_predict=P_star, alpha=alpha, batchsize=batchsize, boundary_batchsize=boundary_batchsize,
-                                                     epochs=epochs, lr=lr, size=size, save=save, load_epoch=load_epoch, lr_decay=lr_decay,
-                                                     weight_change=weight_change, filename=filename)
+                                                             epochs=epochs, lr=lr, size=size, save=save, load_epoch=load_epoch, lr_decay=lr_decay,
+                                                             alpha_decay=alpha_decay, patience=patience, filename=filename)
 
     # Save PINN outputs
     with open('./figures/pickles/pinn_loss_' + filename + '.pkl', 'wb') as file:

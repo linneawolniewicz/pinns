@@ -163,23 +163,23 @@ class PINN(tf.keras.Model):
             # Calculate total epoch loss
             total_pinn_loss[epoch] = np.sum(pinn_loss)
             total_boundary_loss[epoch] = np.sum(boundary_loss)
-            print(f'Training loss for epoch {epoch}: pinn: {total_pinn_loss[epoch]:.4f}, boundary: {total_boundary_loss[epoch]:.4f}, total: {(total_boundary_loss[epoch]+total_pinn_loss[epoch]):.4f}')
+            print(f'Epoch {epoch}. Current alpha: {alpha:.4f}, lr: {lr:.4f}. Training losses: pinn: {total_pinn_loss[epoch]:.4f}, ' +
+                  f'boundary: {total_boundary_loss[epoch]:.4f}, weighted total: {((alpha*total_boundary_loss[epoch])+((1-alpha)*total_pinn_loss[epoch])):.4f}')
             
-            # Predict
             predictions[:, :, epoch] = self.predict(P_predict, size)
             
-            # Determine if loss has decreased since the last patience epoch
+            # Decay lr if loss has decreased since the last patience epoch
             if (epoch > patience):
-                hasntDecreased = True
-                if (total_pinn_loss[epoch] + total_boundary_loss[epoch]) < (total_pinn_loss[epoch-patience] + total_boundary_loss[epoch-patience]):
-                    hasntDecreased = False
+                hasntDecreased = False
+                if (total_pinn_loss[epoch] + total_boundary_loss[epoch]) > (total_pinn_loss[epoch-patience] + total_boundary_loss[epoch-patience]):
+                    hasntDecreased = True
                         
                 if (lr_decay != -1) & hasntDecreased:
                     lr = lr_decay*lr
 
-                if (alpha_decay != -1) & hasntDecreased:
-                    alpha = alpha_decay*alpha
-                    print(f'New learning rate {lr} and alpha {alpha}') 
+            # Decrease alpha each epoch
+            if alpha_decay != -1:
+                alpha = alpha_decay*alpha
 
             # If the epoch is a multiple of 10, save to a checkpoint
             if (epoch%10 == 0) & (save == True):
@@ -206,7 +206,6 @@ class PINN(tf.keras.Model):
             # Pass prediction data through the model
             preds[start_idx:end_idx, :] = self.tf_call(P[start_idx:end_idx, :]).numpy()
         
-        # Return f
         return preds
     
     def evaluate(self, ): 
@@ -275,7 +274,7 @@ def main():
         sherpa.Discrete(name='num_layers', range=[2, 10])
     ]
     
-    n_run = 200
+    n_run = 100
     study = sherpa.Study(
         parameters=parameters,
         algorithm=sherpa.algorithms.RandomSearch(max_num_trials=n_run),
@@ -283,21 +282,23 @@ def main():
     )
 
     # Hyperparameters
-    alpha = 0.95
-    alpha_decay = 0.99
-    lr_decay = 0.99
+    alpha = 0.9
+    alpha_decay = 0.998
+    lr_decay = 0.95
+    patience = 10
     batchsize = 1032
     boundary_batchsize = 256
-    patience = 3
     epochs = 300
+    activation = 'selu'
     save = False
     load_epoch = -1
     filename = ''
-    activation = 'selu'
     
     # run Sherpa experiment
     dfs = []
     for i, trial in enumerate(study):
+        print("-----------------------------------------------------------")
+        print(f'Trial id: {i}')
         start = time.time()
         
         # Get hyperparameters
@@ -327,9 +328,9 @@ def main():
         df['lr'] = lr
         df['batchsize'] = batchsize
         df['boundary_batchsize'] = boundary_batchsize
+        df['alpha'] = alpha
         df['alpha_decay'] = alpha_decay
         df['lr_decay'] = lr_decay
-        df['alpha'] = alpha
         df['patience'] = patience
         df['epochs'] = epochs
         df['activation'] = activation
