@@ -5,7 +5,7 @@
 ##SBATCH --J=pinns
 #SBATCH --tasks-per-node=1
 #SBATCH --cpus-per-task=1
-#SBATCH --time 50:00:00
+#SBATCH --time 72:00:00
 #SBATCH --mem=12gb
 #SBATCH --mail-user=linneamw@hawaii.edu
 #SBATCH --mail-type=BEGIN

@@ -159,7 +159,7 @@ class PINN(tf.keras.Model):
             # Calculate total epoch loss
             total_pinn_loss[epoch] = np.sum(pinn_loss)
             total_boundary_loss[epoch] = np.sum(boundary_loss)
-            print(f'Epoch {epoch}. Current alpha: {alpha:.4f}, lr: {lr:.4f}. Training losses: pinn: {total_pinn_loss[epoch]:.4f}, ' +
+            print(f'Epoch {epoch}. Current alpha: {alpha:.4f}, lr: {lr:.6f}. Training losses: pinn: {total_pinn_loss[epoch]:.4f}, ' +
                   f'boundary: {total_boundary_loss[epoch]:.4f}, weighted total: {((alpha*total_boundary_loss[epoch])+((1-alpha)*total_pinn_loss[epoch])):.4f}')
             
             predictions[:, :, epoch] = self.predict(P_predict, size)
@@ -265,23 +265,27 @@ def main():
 
     # Neural network. Note: 2 inputs- (p, r), 1 output- f(r, p)
     inputs = tf.keras.Input((2))
-    x_ = tf.keras.layers.Dense(1000, activation='relu')(inputs)
-    x_ = tf.keras.layers.Dense(1000, activation='relu')(x_)
-    x_ = tf.keras.layers.Dense(1000, activation='relu')(x_)
+    x_ = tf.keras.layers.Dense(299, activation='selu')(inputs)
+    x_ = tf.keras.layers.Dense(299, activation='selu')(x_)
+    x_ = tf.keras.layers.Dense(299, activation='selu')(x_)
+    x_ = tf.keras.layers.Dense(299, activation='selu')(x_)
+    x_ = tf.keras.layers.Dense(299, activation='selu')(x_)
+    x_ = tf.keras.layers.Dense(299, activation='selu')(x_)
+    x_ = tf.keras.layers.Dense(299, activation='selu')(x_)
     outputs = tf.keras.layers.Dense(1, activation='linear')(x_) 
-
+    
     # Hyperparameters
-    alpha = 0.9
+    alpha = 0.5400173528558001
     alpha_decay = 0.998
-    lr = 3e-2
+    lr = 3e-3
     lr_decay = 0.95
     patience = 10
     batchsize = 1032
     boundary_batchsize = 256
-    epochs = 300
-    save = False
+    epochs = 1500
+    save = True
     load_epoch = -1
-    filename = ''
+    filename = 'sherpa_60_trial_id_33'
 
     # Initialize and fit the PINN
     pinn = PINN(inputs=inputs, outputs=outputs, lower_bound=lb, upper_bound=ub, p=p[:, 0], r=r[:, 0], 

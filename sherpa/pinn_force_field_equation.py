@@ -3,10 +3,6 @@ import numpy as np
 import tensorflow as tf
 import sherpa
 import pickle as pkl
-import sherpa.schedulers
-import sherpa.algorithms
-import time
-import pandas as pd
 tf.config.list_physical_devices(device_type=None)
 
 ###################################################################################
@@ -82,6 +78,8 @@ class PINN(tf.keras.Model):
     Description: The fit function used to iterate through epoch * steps_per_epoch steps of train_step. 
     
     Inputs: 
+        client, trial: Sherpa client and trial
+        
         P_predict: (N, 2) array: Input data for entire spatial and temporal domain. Used for vizualization for
         predictions at the end of each epoch. Michael created a very pretty video file with it. 
         
@@ -114,8 +112,8 @@ class PINN(tf.keras.Model):
     
     Outputs: Losses for each equation (Total, PDE, Boundary Value), and predictions for each epoch.
     '''
-    def fit(self, P_predict, alpha=1, batchsize=64, boundary_batchsize=16, epochs=20, lr=3e-3, size=256, 
-            save=False, load_epoch=-1, lr_decay=-1, alpha_decay=-1, patience=3, filename=''):
+    def fit(self, client, trial, P_predict, alpha=1, batchsize=64, boundary_batchsize=16, epochs=20, lr=3e-3, 
+            size=256, save=False, load_epoch=-1, lr_decay=-1, alpha_decay=-1, patience=3, filename=''):
         
         # If load == True, load the weights
         if load_epoch != -1:
@@ -163,7 +161,7 @@ class PINN(tf.keras.Model):
             # Calculate total epoch loss
             total_pinn_loss[epoch] = np.sum(pinn_loss)
             total_boundary_loss[epoch] = np.sum(boundary_loss)
-            print(f'Epoch {epoch}. Current alpha: {alpha:.4f}, lr: {lr:.4f}. Training losses: pinn: {total_pinn_loss[epoch]:.4f}, ' +
+            print(f'Epoch {epoch}. Current alpha: {alpha:.4f}, lr: {lr:.6f}. Training losses: pinn: {total_pinn_loss[epoch]:.4f}, ' +
                   f'boundary: {total_boundary_loss[epoch]:.4f}, weighted total: {((alpha*total_boundary_loss[epoch])+((1-alpha)*total_pinn_loss[epoch])):.4f}')
             
             predictions[:, :, epoch] = self.predict(P_predict, size)
@@ -185,6 +183,15 @@ class PINN(tf.keras.Model):
             if (epoch%10 == 0) & (save == True):
                 name = './ckpts/pinn_' + filename + '_epoch_' + str(epoch)
                 self.save_weights(name, overwrite=True, save_format=None, options=None)
+        
+            # Send metrics
+            if client:
+                obj = total_pinn_loss[epoch] + total_boundary_loss[epoch]
+                sherpa = client.send_metrics(
+                         trial,
+                         iteration=epoch,
+                         objective=obj
+                )
         
         return total_pinn_loss, total_boundary_loss, predictions
     
@@ -238,7 +245,7 @@ class PINN(tf.keras.Model):
 
 ###########################################################################################
 
-def main():
+def main(client, trial):
     # Constants  
     m = 0.938 # GeV/c^2
     gamma = -3 # Between -2 and -3
@@ -266,99 +273,45 @@ def main():
     # Flatten and transpose data for ML
     P, R = np.meshgrid(p, r)
     P_star = np.hstack((P.flatten()[:,None], R.flatten()[:,None]))
-
-    # Sherpa
-    parameters = [
-        sherpa.Ordinal(name='lr', range=[0.03, 0.003, 0.0003]),
-        sherpa.Discrete(name='num_hidden_units', range=[10, 300]),
-        sherpa.Discrete(name='num_layers', range=[2, 10])
-    ]
     
-    n_run = 100
-    study = sherpa.Study(
-        parameters=parameters,
-        algorithm=sherpa.algorithms.RandomSearch(max_num_trials=n_run),
-        lower_is_better=True
-    )
+    # Sherpa
+    hyperparameters = trial.parameters
 
     # Hyperparameters
-    alpha = 0.9
+    epochs = 5
     alpha_decay = 0.998
     lr_decay = 0.95
     patience = 10
     batchsize = 1032
     boundary_batchsize = 256
-    epochs = 300
     activation = 'selu'
     save = False
     load_epoch = -1
     filename = ''
-    
-    # run Sherpa experiment
-    dfs = []
-    for i, trial in enumerate(study):
-        print("-----------------------------------------------------------")
-        print(f'Trial id: {i}')
-        start = time.time()
-        
-        # Get hyperparameters
-        lr = trial.parameters['lr']
-        num_layers = trial.parameters['num_layers']
-        num_hidden_units = trial.parameters['num_hidden_units']
+    activation = 'selu'
+    alpha = hps.get('alpha')
+    num_layers = hps.get('num_layers')
+    num_hidden_units = hps.get('num_hidden_units')
 
-        # Create model
-        inputs = tf.keras.Input((2))
-        x_ = tf.keras.layers.Dense(num_hidden_units, activation=activation)(inputs)
-        for _ in range(num_layers-1):
-            x_ = tf.keras.layers.Dense(num_hidden_units, activation=activation)(x_)
-        outputs = tf.keras.layers.Dense(1, activation='linear')(x_)
-                                  
-        # Train the PINN
-        pinn = PINN(inputs=inputs, outputs=outputs, lower_bound=lb, upper_bound=ub, p=p[:, 0], r=r[:, 0], 
-                    f_boundary=f_boundary[:, 0], size=size)
-        pinn_loss, boundary_loss, predictions = pinn.fit(P_predict=P_star, alpha=alpha, batchsize=batchsize, boundary_batchsize=boundary_batchsize,
-                                                         epochs=epochs, lr=lr, size=size, save=save, load_epoch=load_epoch, lr_decay=lr_decay,
-                                                         alpha_decay=alpha_decay, patience=patience, filename=filename)
-        
-        # Save model output dataframe
-        df = pd.DataFrame()
-        df['trial_id'] = i,
-        df['num_layers'] = num_layers
-        df['num_hidden_units'] = num_hidden_units
-        df['lr'] = lr
-        df['batchsize'] = batchsize
-        df['boundary_batchsize'] = boundary_batchsize
-        df['alpha'] = alpha
-        df['alpha_decay'] = alpha_decay
-        df['lr_decay'] = lr_decay
-        df['patience'] = patience
-        df['epochs'] = epochs
-        df['activation'] = activation
-        df['final_boundary_loss'] = boundary_loss[-1]
-        df['final_pinn_loss'] = pinn_loss[-1]
-        dfs.append(df)
-        
-        # Every 5 trials save dataframe
-        if i%5==0: pd.concat(dfs).to_csv('./outputs/sherpa_' + str(n_run) + '.csv')
-        
-        # Pickle predictions and losses
-        with open('./pickles/pinn_loss_sherpa_' + str(n_run) + '_trial_id_' + str(i) + '.pkl', 'wb') as file:
-            pkl.dump(pinn_loss, file)
-        with open('./pickles/boundary_loss_sherpa_' + str(n_run) + '_trial_id_' + str(i) + '.pkl', 'wb') as file:
-            pkl.dump(boundary_loss, file)
-        with open('./pickles/predictions_sherpa_' + str(n_run) + '_trial_id_' + str(i) + '.pkl', 'wb') as file:
-            pkl.dump(predictions, file)
-        
-        # Write progress.txt
-        end = time.time()
-        line = '===============================================\n'
-        line += "Trial id: {}, elapsed time: {:.3f}".format(i, end - start) + '\n'
-        with open('progress.txt', 'a') as f:
-            f.write(line)
-            
-    # Save final dataframe
-    pd.concat(dfs).to_csv('./outputs/sherpa_' + str(n_run) + '.csv')
+    # Create model
+    inputs = tf.keras.Input((2))
+    x_ = tf.keras.layers.Dense(num_hidden_units, activation=activation)(inputs)
+    for _ in range(num_layers-1):
+        x_ = tf.keras.layers.Dense(num_hidden_units, activation=activation)(x_)
+    outputs = tf.keras.layers.Dense(1, activation='linear')(x_)
+    
+    print(outputs)
+
+    # Train
+    pinn = PINN(inputs=inputs, outputs=outputs, lower_bound=lb, upper_bound=ub, p=p[:, 0], r=r[:, 0], 
+                f_boundary=f_boundary[:, 0], size=size)
+    pinn_loss, boundary_loss, predictions = pinn.fit(client, trial, P_predict=P_star, alpha=alpha, batchsize=batchsize, boundary_batchsize=boundary_batchsize,
+                                                     epochs=epochs, lr=lr, size=size, save=save, load_epoch=load_epoch, lr_decay=lr_decay,
+                                                     weight_change=weight_change, patience=patience, filename=filename)
+
 
 if __name__ == '__main__':
-    main()
+    client = sherpa.Client()
+    trial = client.get_trial()
+    main(client, trial)
     

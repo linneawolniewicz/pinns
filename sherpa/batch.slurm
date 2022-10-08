@@ -19,4 +19,4 @@
 ## CHECK FILE NAME!
 export PATH="/home/linneamw/sadow_lts/personal/linneamw/anaconda3/bin:$PATH"
 source activate pinns
-python sherpa_forloop_pinn_force_field_equation.py
+python sherpa_study_pinn_force_field_equation.py

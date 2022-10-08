@@ -6,7 +6,7 @@
 #SBATCH --nodes=1
 #SBATCH --tasks-per-node=1
 #SBATCH --cpus-per-task=1
-#SBATCH --time 72:00:00
+#SBATCH --time 3-00:00:00
 #SBATCH --error=./error_%j.err
 #SBATCH --output=./output_%j.out
 #SBATCH --mem=12gb
@@ -18,5 +18,6 @@
 #echo hello
 
 export PATH="/home/linneamw/sadow_lts/personal/linneamw/anaconda3/bin:$PATH"
-source activate pinns
+source /home/linneamw/profiles/auto.profile
+conda activate pinns
 python sherpa_pinn_force_field_equation.py
