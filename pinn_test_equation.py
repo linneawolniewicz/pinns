@@ -214,17 +214,9 @@ class PINN(tf.keras.Model):
         # Note: p and r are taken out of logspace for the PINN calculation
         p = tf.math.exp(p) # GeV/c
         r = tf.math.exp(r) # km
-        V = 400 # 400 km/s
-        m = 0.938 # GeV/c^2
-        k_0 = 1e11 # km^2/s
-        k_1 = k_0 * tf.math.divide(r, 150e6) # km^2/s
-        k_2 = p # unitless, k_2 = p/p0 and p0 = 1 GeV/c
-        R = p # GV
-        beta = tf.math.divide(p, tf.math.sqrt(tf.math.square(p) + tf.math.square(m))) 
-        k = beta*k_1*k_2
         
         # Calculate physics loss
-        l_f = tf.math.reduce_mean(tf.math.abs(f_r + (tf.math.divide(R*V, 3*k) * f_p)))
+        l_f = tf.math.reduce_mean(tf.math.abs(f_p + f_r - 2*p - 2*r))
         
         return l_f
     
@@ -234,37 +226,26 @@ class PINN(tf.keras.Model):
         return self.call(inputs, training=True)
     
 ###########################################################################################
-# Function to log and scale the data
-def log_and_scale(data):
-    data = np.log(data)
-    data = (data - np.min(data))/np.abs(np.max(data) - np.min(data))
-    
-    return data
 
 def main():
     # Constants  
-    m = 0.938 # GeV/c^2
-    gamma = -3 # Between -2 and -3
     size = 512 # size of r, T, p, and f_boundary
-    au = 150e6 # 150e6 m/AU
-    r_limits = [119, 120]
-    T_limits = [0.001, 1000]
+    x_limits = [1, 10]
+    y_limits = [1, 10]
 
     # Create data
-    T = np.logspace(np.log10(T_limits[0]), np.log10(T_limits[1]), size).flatten()[:, None]
-    p = (np.sqrt((T+m)**2-m**2)).flatten()[:,None] # GeV/c
-    r = np.logspace(np.log10(r_limits[0]*au), np.log10(r_limits[1]*au), size).flatten()[:, None] # km
-    f_boundary = ((T + m)**gamma)/(p**2) # particles/(m^3 (GeV/c)^3)
+    x = np.logspace(np.log10(x_limits[0]), np.log10(x_limits[1]), size).flatten()[:, None]
+    y = np.logspace(np.log10(y_limits[0]), np.log10(y_limits[1]), size).flatten()[:, None]
+    f_boundary = x**2 + 100 
 
-    # Normalize input data
-    r = log_and_scale(r)
-    T = log_and_scale(T)
-    p = log_and_scale(p)
-    f_boundary = log_and_scale(f_boundary)
+    # Take the log of all input data
+    p = np.log(x)
+    r = np.log(y)
+    f_boundary = np.log(f_boundary)
 
     # Domain bounds
-    lb = np.array([p[0], r[0]]) # (p, r) in (GeV, AU)
-    ub = np.array([p[-1], r[-1]]) # (p, r) in (GeV, AU)
+    lb = np.array([p[0], r[0]])
+    ub = np.array([p[-1], r[-1]])
 
     # Flatten and transpose data for ML
     P, R = np.meshgrid(p, r)
@@ -284,16 +265,16 @@ def main():
     # Hyperparameters
     alpha = 0.5692743825773139
     alpha_decay = 0.998
-    beta = 0.01
+    beta = 0
     lr = 3e-3
     lr_decay = 0.95
     patience = 10
     batchsize = 1032
     boundary_batchsize = 256
-    epochs = 1000
+    epochs = 500
     save = False
     load_epoch = -1
-    filename = 'sherpa_55_trial_id_2'
+    filename = 'test_easy_equation_Beta0'
 
     # Initialize and fit the PINN
     pinn = PINN(inputs=inputs, outputs=outputs, lower_bound=lb, upper_bound=ub, p=p[:, 0], f_boundary=f_boundary[:, 0], size=size)
@@ -310,18 +291,6 @@ def main():
 
     with open('./figures/pickles/predictions_' + filename + '.pkl', 'wb') as file:
         pkl.dump(predictions, file)
-
-#     with open('./figures/pickles/f_boundary.pkl', 'wb') as file:
-#         pkl.dump(f_boundary, file)
-
-#     with open('./figures/pickles/p.pkl', 'wb') as file:
-#         pkl.dump(p, file)
-
-#     with open('./figures/pickles/T.pkl', 'wb') as file:
-#         pkl.dump(T, file)
-
-#     with open('./figures/pickles/r.pkl', 'wb') as file:
-#         pkl.dump(r, file)
 
 if __name__=="__main__":
     main()
