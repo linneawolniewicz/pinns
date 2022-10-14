@@ -105,6 +105,8 @@ class PINN(tf.keras.Model):
         alpha_decay: If -1, alpha will not be changed. Otherwise, alpha = alpha_decay*alpha if loss 
         hasn't decreased
         
+        alpha_limit = Minimum alpha value to decay to
+        
         patience: Number of epochs to check whether loss has decreased before updating lr or alpha
         
         filename: Name for the checkpoint file
@@ -112,7 +114,7 @@ class PINN(tf.keras.Model):
     Outputs: Losses for each equation (Total, PDE, Boundary Value), and predictions for each epoch.
     '''
     def fit(self, P_predict, alpha=0.5, beta=0.01, batchsize=64, boundary_batchsize=16, epochs=20, lr=3e-3, size=256, 
-            save=False, load_epoch=-1, lr_decay=-1, alpha_decay=-1, patience=3, filename=''):
+            save=False, load_epoch=-1, lr_decay=-1, alpha_decay=-1, alpha_limit = 0.5, patience=3, filename=''):
         
         # If load == True, load the weights
         if load_epoch != -1:
@@ -174,7 +176,7 @@ class PINN(tf.keras.Model):
                     lr = lr_decay*lr
 
             # Decrease alpha each epoch
-            if alpha_decay != -1:
+            if (alpha_decay != -1) & (alpha >= alpha_limit):
                 alpha = alpha_decay*alpha
 
             # If the epoch is a multiple of 10, save to a checkpoint
@@ -284,6 +286,7 @@ def main():
     # Hyperparameters
     alpha = 0.5692743825773139
     alpha_decay = 0.998
+    alpha_limit = 0.2
     beta = 0.01
     lr = 3e-3
     lr_decay = 0.95
@@ -299,7 +302,7 @@ def main():
     pinn = PINN(inputs=inputs, outputs=outputs, lower_bound=lb, upper_bound=ub, p=p[:, 0], f_boundary=f_boundary[:, 0], size=size)
     pinn_loss, boundary_loss, predictions = pinn.fit(P_predict=P_predict, alpha=alpha, beta=beta, batchsize=batchsize, boundary_batchsize=boundary_batchsize,
                                                              epochs=epochs, lr=lr, size=size, save=save, load_epoch=load_epoch, lr_decay=lr_decay,
-                                                             alpha_decay=alpha_decay, patience=patience, filename=filename)
+                                                             alpha_decay=alpha_decay, alpha_limit=alpha_limit, patience=patience, filename=filename)
 
     # Save PINN outputs
     with open('./figures/pickles/pinn_loss_' + filename + '.pkl', 'wb') as file:
