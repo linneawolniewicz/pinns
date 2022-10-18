@@ -1,8 +1,13 @@
 # Imports
 import numpy as np
 import tensorflow as tf
-import sherpa
+import tensorflow_probability as tfp
 import pickle as pkl
+import pandas as pd
+import matplotlib.pyplot as plt
+
+tfd = tfp.distributions
+tfm = tf.math
 tf.config.list_physical_devices(device_type=None)
 
 ###################################################################################
@@ -37,7 +42,7 @@ class PINN(tf.keras.Model):
         
         p_boundary, r_boundary : (boundary_batchsize, 1) shaped arrays : These inputs are used to derive the boundary value
         equations. The boundary value loss relies on target data (**not an equation**), so we can just measure the MAE of 
-        PINN(p_boundary, r_boundary) = f_pred_boundary and boundary_f.
+        PINN(p_boundary, r_boundary) = f_pred_boundary and f_boundary.
         
         f_boundary: (boundary_batchsize, 1) shaped arrays : This is the target data for the boundary value inputs
         
@@ -50,15 +55,27 @@ class PINN(tf.keras.Model):
     def train_step(self, p, r, p_boundary, r_boundary, f_boundary, alpha, beta):
         with tf.GradientTape(persistent=True) as t2: 
             with tf.GradientTape(persistent=True) as t1: 
+                t1.watch(p)
+                t1.watch(r)
+                
+                lb = tfm.log(self.lower_bound)
+                ub = tfm.log(self.upper_bound)
+                
                 # PINN loss
-                P = tf.concat((p, r), axis=1)
+                p_scaled = (tfm.log(p) - lb[0])/tfm.abs(ub[0] - lb[0])
+                r_scaled = (tfm.log(r) - lb[1])/tfm.abs(ub[1] - lb[1])
+                
+                P = tf.concat((p_scaled, r_scaled), axis=1)
                 f = self.tf_call(P)
 
                 # Boundary loss
-                P_boundary = tf.concat((p_boundary, r_boundary), axis=1)
+                p_boundary_scaled = (tfm.log(p_boundary) - lb[0])/tfm.abs(ub[0] - lb[0])
+                r_boundary_scaled = (tfm.log(r_boundary) - lb[1])/tfm.abs(ub[1] - lb[1])
+                
+                P_boundary = tf.concat((p_boundary_scaled, r_boundary_scaled), axis=1)
                 f_pred_boundary = self.tf_call(P_boundary)
 
-                boundary_loss = tf.math.reduce_mean(tf.math.abs(f_pred_boundary - f_boundary))
+                boundary_loss = tfm.reduce_mean(tfm.abs(f_pred_boundary - f_boundary))
 
             # Calculate first-order PINN gradients
             f_p = t1.gradient(f, p)
@@ -66,7 +83,7 @@ class PINN(tf.keras.Model):
             
             pinn_loss = self.pinn_loss(p, r, f_p, f_r)
             total_loss = (1-alpha)*pinn_loss + alpha*beta*boundary_loss
-        
+
         # Backpropagation
         gradients = t2.gradient(total_loss, self.trainable_variables)
         self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
@@ -139,19 +156,20 @@ class PINN(tf.keras.Model):
             
             # For each step, sample data and pass to train_step
             for step in range(steps_per_epoch):
-                # Sample p and r uniformly between lower and upper bound
-                p = tf.Variable(tf.random.uniform((batchsize, 1), minval=self.lower_bound[0], maxval=self.upper_bound[0]))
-                r = tf.Variable(tf.random.uniform((batchsize, 1), minval=self.lower_bound[1], maxval=self.upper_bound[1]))
+                # Sample p and r according to a beta distribution between upper and lower bounds
+                dist = tfd.Beta(1, 5)
+                p = (dist.sample((batchsize, 1))*tfm.abs(self.upper_bound[0] - self.lower_bound[0])) + self.lower_bound[0]
+                r = (dist.sample((batchsize, 1))*tfm.abs(self.upper_bound[1] - self.lower_bound[1])) + self.lower_bound[1]
                 
                 # Randomly sample boundary_batchsize from p_boundary and f_boundary
                 p_idx = np.expand_dims(np.random.choice(self.f_boundary.shape[0], boundary_batchsize, replace=False), axis=1)
-                p_boundary = self.p[p_idx]
+                p_boundary = tf.Variable(self.p[p_idx], dtype=tf.float32)
                 f_boundary = self.f_boundary[p_idx]
                 
                 # Create r_boundary array = r_HP
-                upper_bound = np.zeros((boundary_batchsize, 1))
-                upper_bound[:] = self.upper_bound[1]
-                r_boundary = tf.Variable(upper_bound, dtype=tf.float32)
+                upper_boundary = np.zeros((boundary_batchsize, 1))
+                upper_boundary[:] = self.upper_bound[1]
+                r_boundary = tf.Variable(upper_boundary, dtype=tf.float32)
                 
                 # Train and get loss
                 losses = self.train_step(p, r, p_boundary, r_boundary, f_boundary, alpha, beta)
@@ -161,8 +179,8 @@ class PINN(tf.keras.Model):
             # Sum losses
             total_pinn_loss[epoch] = np.sum(pinn_loss)
             total_boundary_loss[epoch] = np.sum(boundary_loss)
-            print(f'Epoch {epoch}. Current alpha: {alpha:.4f}, lr: {lr:.6f}. Training losses: pinn: {total_pinn_loss[epoch]:.4f}, ' +
-                  f'boundary: {total_boundary_loss[epoch]:.4f}, weighted total: {((alpha*beta*total_boundary_loss[epoch])+((1-alpha)*total_pinn_loss[epoch])):.4f}')
+            print(f'Epoch {epoch}. Current alpha: {alpha:.4f}, lr: {lr:.6f}. Training losses: pinn: {total_pinn_loss[epoch]:.10f}, ' +
+                  f'boundary: {total_boundary_loss[epoch]:.6f}, weighted total: {((alpha*beta*total_boundary_loss[epoch])+((1-alpha)*total_pinn_loss[epoch])):.10f}')
             
             predictions[:, :, epoch] = self.predict(P_predict, batchsize)
             
@@ -212,21 +230,18 @@ class PINN(tf.keras.Model):
     
     # pinn_loss calculates the PINN loss by calculating the MAE of the pinn function
     @tf.function
-    def pinn_loss(self, p, r, f_p, f_r): # To-do: add loss pass-through!
-        # Note: p and r are taken out of logspace for the PINN calculation
-        p = tf.math.exp(p) # GeV/c
-        r = tf.math.exp(r) # km
+    def pinn_loss(self, p, r, f_p, f_r):
         V = 400 # 400 km/s
         m = 0.938 # GeV/c^2
         k_0 = 1e11 # km^2/s
-        k_1 = k_0 * tf.math.divide(r, 150e6) # km^2/s
+        k_1 = k_0 * tfm.divide(r, 150e6) # km^2/s
         k_2 = p # unitless, k_2 = p/p0 and p0 = 1 GeV/c
         R = p # GV
-        beta = tf.math.divide(p, tf.math.sqrt(tf.math.square(p) + tf.math.square(m))) 
+        beta = tfm.divide(p, tfm.sqrt(tfm.square(p) + tfm.square(m))) 
         k = beta*k_1*k_2
         
         # Calculate physics loss
-        l_f = tf.math.reduce_mean(tf.math.abs(f_r + (tf.math.divide(R*V, 3*k) * f_p)))
+        l_f = tfm.reduce_mean(tfm.abs(f_r + (tfm.divide(R*V, 3*k) * f_p)))
         
         return l_f
     
@@ -236,13 +251,6 @@ class PINN(tf.keras.Model):
         return self.call(inputs, training=True)
     
 ###########################################################################################
-# Function to log and scale the data
-def log_and_scale(data):
-    data = np.log(data)
-    data = (data - np.min(data))/np.abs(np.max(data) - np.min(data))
-    
-    return data
-
 def main():
     # Constants  
     m = 0.938 # GeV/c^2
@@ -252,58 +260,61 @@ def main():
     r_limits = [119, 120]
     T_limits = [0.001, 1000]
 
-    # Create data
+    # Create boundary data
     T = np.logspace(np.log10(T_limits[0]), np.log10(T_limits[1]), size).flatten()[:, None]
     p = (np.sqrt((T+m)**2-m**2)).flatten()[:,None] # GeV/c
     r = np.logspace(np.log10(r_limits[0]*au), np.log10(r_limits[1]*au), size).flatten()[:, None] # km
     f_boundary = ((T + m)**gamma)/(p**2) # particles/(m^3 (GeV/c)^3)
 
-    # Normalize input data
-    r = log_and_scale(r)
-    T = log_and_scale(T)
-    p = log_and_scale(p)
-    f_boundary = log_and_scale(f_boundary)
+    # Get upper and lower bounds
+    lb = np.array([p[0], r[0]], dtype='float32') # TO-DO: Should this be p[0], r[0] or p_limits[0], r_limits[0]???
+    ub = np.array([p[-1], r[-1]], dtype='float32')
 
-    # Domain bounds
-    lb = np.array([p[0], r[0]]) # (p, r) in (GeV, AU)
-    ub = np.array([p[-1], r[-1]]) # (p, r) in (GeV, AU)
+    # Create test data
+    p_predict = np.log(p)
+    r_predict = np.log(r)
 
-    # Flatten and transpose data for ML
-    P, R = np.meshgrid(p, r)
+    p_predict = (p_predict - np.log(lb[0]))/np.abs(np.log(ub[0]) - np.log(lb[0]))
+    r_predict = (r_predict - np.log(lb[1]))/np.abs(np.log(ub[1]) - np.log(lb[1]))
+
+    P, R = np.meshgrid(p_predict, r_predict)
     P_predict = np.hstack((P.flatten()[:,None], R.flatten()[:,None]))
 
     # Neural network. Note: 2 inputs- (p, r), 1 output- f(r, p)
     inputs = tf.keras.Input((2))
-    x_ = tf.keras.layers.Dense(312, activation='selu')(inputs)
-    x_ = tf.keras.layers.Dense(312, activation='selu')(x_)
-    x_ = tf.keras.layers.Dense(312, activation='selu')(x_)
-    x_ = tf.keras.layers.Dense(312, activation='selu')(x_)
-    x_ = tf.keras.layers.Dense(312, activation='selu')(x_)
-    x_ = tf.keras.layers.Dense(312, activation='selu')(x_)
-    x_ = tf.keras.layers.Dense(312, activation='selu')(x_)
+    x_ = tf.keras.layers.Dense(142, activation='selu')(inputs)
+    x_ = tf.keras.layers.Dense(142, activation='selu')(x_)
+    x_ = tf.keras.layers.Dense(142, activation='selu')(x_)
+    x_ = tf.keras.layers.Dense(142, activation='selu')(x_)
+    x_ = tf.keras.layers.Dense(142, activation='selu')(x_)
+    x_ = tf.keras.layers.Dense(142, activation='selu')(x_)
+    x_ = tf.keras.layers.Dense(142, activation='selu')(x_)
+    x_ = tf.keras.layers.Dense(142, activation='selu')(x_)
+    x_ = tf.keras.layers.Dense(142, activation='selu')(x_)
     outputs = tf.keras.layers.Dense(1, activation='linear')(x_) 
 
     # Hyperparameters
-    alpha = 0.5692743825773139
+    alpha = 0.999
     alpha_decay = 0.998
     alpha_limit = 0.2
-    beta = 0.01
+    beta = 1e-7
     lr = 3e-3
     lr_decay = 0.95
     patience = 10
     batchsize = 1032
     boundary_batchsize = 256
-    epochs = 1000
+    epochs = 2000
     save = False
     load_epoch = -1
-    filename = 'sherpa_55_trial_id_2'
+    filename = 'sherpa_100_trial_id_7'
+    n_samples = 20000
 
     # Initialize and fit the PINN
-    pinn = PINN(inputs=inputs, outputs=outputs, lower_bound=lb, upper_bound=ub, p=p[:, 0], f_boundary=f_boundary[:, 0], size=size)
+    pinn = PINN(inputs=inputs, outputs=outputs, lower_bound=lb, upper_bound=ub, p=p[:, 0], f_boundary=f_boundary[:, 0], size=size, n_samples=n_samples)
     pinn_loss, boundary_loss, predictions = pinn.fit(P_predict=P_predict, alpha=alpha, beta=beta, batchsize=batchsize, boundary_batchsize=boundary_batchsize,
                                                              epochs=epochs, lr=lr, size=size, save=save, load_epoch=load_epoch, lr_decay=lr_decay,
-                                                             alpha_decay=alpha_decay, alpha_limit=alpha_limit, patience=patience, filename=filename)
-
+                                                             alpha_decay=alpha_decay, patience=patience, filename=filename)
+    
     # Save PINN outputs
     with open('./figures/pickles/pinn_loss_' + filename + '.pkl', 'wb') as file:
         pkl.dump(pinn_loss, file)
@@ -314,17 +325,17 @@ def main():
     with open('./figures/pickles/predictions_' + filename + '.pkl', 'wb') as file:
         pkl.dump(predictions, file)
 
-#     with open('./figures/pickles/f_boundary.pkl', 'wb') as file:
-#         pkl.dump(f_boundary, file)
+    with open('./figures/pickles/f_boundary.pkl', 'wb') as file:
+        pkl.dump(f_boundary, file)
 
-#     with open('./figures/pickles/p.pkl', 'wb') as file:
-#         pkl.dump(p, file)
+    with open('./figures/pickles/p.pkl', 'wb') as file:
+        pkl.dump(p, file)
 
-#     with open('./figures/pickles/T.pkl', 'wb') as file:
-#         pkl.dump(T, file)
+    with open('./figures/pickles/T.pkl', 'wb') as file:
+        pkl.dump(T, file)
 
-#     with open('./figures/pickles/r.pkl', 'wb') as file:
-#         pkl.dump(r, file)
+    with open('./figures/pickles/r.pkl', 'wb') as file:
+        pkl.dump(r, file)
 
 if __name__=="__main__":
     main()
