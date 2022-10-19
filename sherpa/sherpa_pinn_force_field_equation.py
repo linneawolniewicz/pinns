@@ -17,10 +17,11 @@ else:
 
 # Sherpa
 parameters = [
-    sherpa.Ordinal(name='lr', range=[0.03, 0.003, 0.0003]),
-    sherpa.Continuous(name='alpha', range=[0.1, 1.0]),
-    sherpa.Discrete(name='num_hidden_units', range=[100, 1000]),
-    sherpa.Discrete(name='num_layers', range=[2, 10])
+    sherpa.Ordinal(name='lr', range=[1e-3, 1e-4, 1e-5]),
+    sherpa.Continuous(name='alpha', range=[0.9, 1.0]),
+    sherpa.Ordinal(name='beta', range=[1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1]),
+    sherpa.Discrete(name='num_hidden_units', range=[100, 700]),
+    sherpa.Discrete(name='num_layers', range=[5, 10])
 ]
 
 n_trials = 2

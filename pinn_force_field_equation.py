@@ -3,8 +3,6 @@ import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
 import pickle as pkl
-import pandas as pd
-import matplotlib.pyplot as plt
 
 tfd = tfp.distributions
 tfm = tf.math
@@ -48,7 +46,7 @@ class PINN(tf.keras.Model):
         
         alpha: weight on boundary_loss, 1-alpha weight on pinn_loss
         
-        beta: boundary_loss scale factor
+        beta: pinn_loss scale factor
         
     Outputs: sum_loss, pinn_loss, boundary_loss
     '''
@@ -81,8 +79,8 @@ class PINN(tf.keras.Model):
             f_p = t1.gradient(f, p)
             f_r = t1.gradient(f, r)
             
-            pinn_loss = self.pinn_loss(p, r, f_p, f_r)
-            total_loss = (1-alpha)*pinn_loss + alpha*beta*boundary_loss
+            pinn_loss = beta*self.pinn_loss(p, r, f_p, f_r)
+            total_loss = (1-alpha)*pinn_loss + alpha*boundary_loss
 
         # Backpropagation
         gradients = t2.gradient(total_loss, self.trainable_variables)
@@ -99,7 +97,7 @@ class PINN(tf.keras.Model):
         
         alpha: weight on boundary_loss, 1-alpha weight on pinn_loss
         
-        beta: boundary_loss scale factor
+        beta: pinn_loss scale factor
         
         batchsize: batchsize for (p, r) in train step
         
@@ -180,7 +178,7 @@ class PINN(tf.keras.Model):
             total_pinn_loss[epoch] = np.sum(pinn_loss)
             total_boundary_loss[epoch] = np.sum(boundary_loss)
             print(f'Epoch {epoch}. Current alpha: {alpha:.4f}, lr: {lr:.6f}. Training losses: pinn: {total_pinn_loss[epoch]:.10f}, ' +
-                  f'boundary: {total_boundary_loss[epoch]:.6f}, weighted total: {((alpha*beta*total_boundary_loss[epoch])+((1-alpha)*total_pinn_loss[epoch])):.10f}')
+                  f'boundary: {total_boundary_loss[epoch]:.6f}, weighted total: {((alpha*total_boundary_loss[epoch])+((1-alpha)*total_pinn_loss[epoch])):.10f}')
             
             predictions[:, :, epoch] = self.predict(P_predict, batchsize)
             
@@ -267,7 +265,7 @@ def main():
     f_boundary = ((T + m)**gamma)/(p**2) # particles/(m^3 (GeV/c)^3)
 
     # Get upper and lower bounds
-    lb = np.array([p[0], r[0]], dtype='float32') # TO-DO: Should this be p[0], r[0] or p_limits[0], r_limits[0]???
+    lb = np.array([p[0], r[0]], dtype='float32')
     ub = np.array([p[-1], r[-1]], dtype='float32')
 
     # Create test data
@@ -282,32 +280,29 @@ def main():
 
     # Neural network. Note: 2 inputs- (p, r), 1 output- f(r, p)
     inputs = tf.keras.Input((2))
-    x_ = tf.keras.layers.Dense(142, activation='selu')(inputs)
-    x_ = tf.keras.layers.Dense(142, activation='selu')(x_)
-    x_ = tf.keras.layers.Dense(142, activation='selu')(x_)
-    x_ = tf.keras.layers.Dense(142, activation='selu')(x_)
-    x_ = tf.keras.layers.Dense(142, activation='selu')(x_)
-    x_ = tf.keras.layers.Dense(142, activation='selu')(x_)
-    x_ = tf.keras.layers.Dense(142, activation='selu')(x_)
-    x_ = tf.keras.layers.Dense(142, activation='selu')(x_)
-    x_ = tf.keras.layers.Dense(142, activation='selu')(x_)
+    x_ = tf.keras.layers.Dense(204, activation='selu')(inputs)
+    x_ = tf.keras.layers.Dense(204, activation='selu')(x_)
+    x_ = tf.keras.layers.Dense(204, activation='selu')(x_)
+    x_ = tf.keras.layers.Dense(204, activation='selu')(x_)
+    x_ = tf.keras.layers.Dense(204, activation='selu')(x_)
+    x_ = tf.keras.layers.Dense(204, activation='selu')(x_)
     outputs = tf.keras.layers.Dense(1, activation='linear')(x_) 
 
     # Hyperparameters
-    alpha = 0.999
+    alpha = 0.99
     alpha_decay = 0.998
     alpha_limit = 0.2
-    beta = 1e-7
-    lr = 3e-3
+    beta = 1e9
+    lr = 3e-4
     lr_decay = 0.95
     patience = 10
     batchsize = 1032
     boundary_batchsize = 256
+    n_samples = 20000
     epochs = 2000
     save = False
     load_epoch = -1
-    filename = 'sherpa_100_trial_id_7'
-    n_samples = 20000
+    filename = 'high_beta'
 
     # Initialize and fit the PINN
     pinn = PINN(inputs=inputs, outputs=outputs, lower_bound=lb, upper_bound=ub, p=p[:, 0], f_boundary=f_boundary[:, 0], size=size, n_samples=n_samples)
@@ -325,17 +320,17 @@ def main():
     with open('./figures/pickles/predictions_' + filename + '.pkl', 'wb') as file:
         pkl.dump(predictions, file)
 
-    with open('./figures/pickles/f_boundary.pkl', 'wb') as file:
-        pkl.dump(f_boundary, file)
+#     with open('./figures/pickles/f_boundary.pkl', 'wb') as file:
+#         pkl.dump(f_boundary, file)
 
-    with open('./figures/pickles/p.pkl', 'wb') as file:
-        pkl.dump(p, file)
+#     with open('./figures/pickles/p.pkl', 'wb') as file:
+#         pkl.dump(p, file)
 
-    with open('./figures/pickles/T.pkl', 'wb') as file:
-        pkl.dump(T, file)
+#     with open('./figures/pickles/T.pkl', 'wb') as file:
+#         pkl.dump(T, file)
 
-    with open('./figures/pickles/r.pkl', 'wb') as file:
-        pkl.dump(r, file)
+#     with open('./figures/pickles/r.pkl', 'wb') as file:
+#         pkl.dump(r, file)
 
 if __name__=="__main__":
     main()

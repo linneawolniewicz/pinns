@@ -8,7 +8,6 @@ import sherpa.schedulers
 import sherpa.algorithms
 import time
 import pandas as pd
-import matplotlib.pyplot as plt
 
 tfd = tfp.distributions
 tfm = tf.math
@@ -52,7 +51,7 @@ class PINN(tf.keras.Model):
         
         alpha: weight on boundary_loss, 1-alpha weight on pinn_loss
         
-        beta: boundary_loss scale factor
+        beta: pinn_loss scale factor
         
     Outputs: sum_loss, pinn_loss, boundary_loss
     '''
@@ -85,8 +84,8 @@ class PINN(tf.keras.Model):
             f_p = t1.gradient(f, p)
             f_r = t1.gradient(f, r)
             
-            pinn_loss = self.pinn_loss(p, r, f_p, f_r)
-            total_loss = (1-alpha)*pinn_loss + alpha*beta*boundary_loss
+            pinn_loss = beta*self.pinn_loss(p, r, f_p, f_r)
+            total_loss = (1-alpha)*pinn_loss + alpha*boundary_loss
 
         # Backpropagation
         gradients = t2.gradient(total_loss, self.trainable_variables)
@@ -103,7 +102,7 @@ class PINN(tf.keras.Model):
         
         alpha: weight on boundary_loss, 1-alpha weight on pinn_loss
         
-        beta: boundary_loss scale factor
+        beta: pinn_loss scale factor
         
         batchsize: batchsize for (p, r) in train step
         
@@ -184,7 +183,7 @@ class PINN(tf.keras.Model):
             total_pinn_loss[epoch] = np.sum(pinn_loss)
             total_boundary_loss[epoch] = np.sum(boundary_loss)
             print(f'Epoch {epoch}. Current alpha: {alpha:.4f}, lr: {lr:.6f}. Training losses: pinn: {total_pinn_loss[epoch]:.10f}, ' +
-                  f'boundary: {total_boundary_loss[epoch]:.6f}, weighted total: {((alpha*beta*total_boundary_loss[epoch])+((1-alpha)*total_pinn_loss[epoch])):.10f}')
+                  f'boundary: {total_boundary_loss[epoch]:.6f}, weighted total: {((alpha*total_boundary_loss[epoch])+((1-alpha)*total_pinn_loss[epoch])):.10f}')
             
             predictions[:, :, epoch] = self.predict(P_predict, batchsize)
             
@@ -287,14 +286,13 @@ def main():
 
     # Sherpa
     parameters = [
-        sherpa.Ordinal(name='lr', range=[1e-3, 1e-4, 1e-5]),
-        sherpa.Continuous(name='alpha', range=[0.9, 1.0]),
-        sherpa.Ordinal(name='beta', range=[1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1]),
+        sherpa.Ordinal(name='lr', range=[3e-3, 3e-4, 3e-5, 3e-6]),
+        sherpa.Continuous(name='alpha', range=[0.95, 1.0]),
         sherpa.Discrete(name='num_hidden_units', range=[100, 700]),
         sherpa.Discrete(name='num_layers', range=[5, 10])
     ]
     
-    n_run = 50
+    n_run = 55
     study = sherpa.Study(
         parameters=parameters,
         algorithm=sherpa.algorithms.RandomSearch(max_num_trials=n_run),
@@ -303,7 +301,8 @@ def main():
 
     # Hyperparameters
     alpha_decay = 0.998
-    alpha_limit = 0.2
+    alpha_limit = 0.1
+    beta = 1e9
     lr_decay = 0.95
     patience = 10
     batchsize = 1032
@@ -312,8 +311,8 @@ def main():
     activation = 'selu'
     save = False
     load_epoch = -1
-    filename = ''
     n_samples = 20000
+    filename = ''
     
     # run Sherpa experiment
     dfs = []
@@ -325,7 +324,6 @@ def main():
         # Get hyperparameters
         lr = trial.parameters['lr']
         alpha = trial.parameters['alpha']
-        beta = trial.parameters['beta']
         num_layers = trial.parameters['num_layers']
         num_hidden_units = trial.parameters['num_hidden_units']
 
