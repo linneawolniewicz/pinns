@@ -18,8 +18,8 @@ domain bounds and the input space.
 class PINN(tf.keras.Model):
     def __init__(self, inputs, outputs, lower_bound, upper_bound, p, f_boundary, size, n_samples=20000):
         super(PINN, self).__init__(inputs=inputs, outputs=outputs)
-        self.lower_bound = lower_bound
-        self.upper_bound = upper_bound
+        self.lower_bound = tfm.log(lower_bound)
+        self.upper_bound = tfm.log(upper_bound)
         self.p = p
         self.f_boundary = f_boundary
         self.n_samples = n_samples
@@ -56,19 +56,16 @@ class PINN(tf.keras.Model):
                 t1.watch(p)
                 t1.watch(r)
                 
-                lb = tfm.log(self.lower_bound)
-                ub = tfm.log(self.upper_bound)
-                
                 # PINN loss
-                p_scaled = (tfm.log(p) - lb[0])/tfm.abs(ub[0] - lb[0])
-                r_scaled = (tfm.log(r) - lb[1])/tfm.abs(ub[1] - lb[1])
+                p_scaled = (tfm.log(p) - self.lower_bound[0])/tfm.abs(self.upper_bound[0] - self.lower_bound[0])
+                r_scaled = (tfm.log(r) - self.lower_bound[1])/tfm.abs(self.upper_bound[1] - self.lower_bound[1])
                 
                 P = tf.concat((p_scaled, r_scaled), axis=1)
                 f = self.tf_call(P)
 
                 # Boundary loss
-                p_boundary_scaled = (tfm.log(p_boundary) - lb[0])/tfm.abs(ub[0] - lb[0])
-                r_boundary_scaled = (tfm.log(r_boundary) - lb[1])/tfm.abs(ub[1] - lb[1])
+                p_boundary_scaled = (tfm.log(p_boundary) - self.lower_bound[0])/tfm.abs(self.upper_bound[0] - self.lower_bound[0])
+                r_boundary_scaled = (tfm.log(r_boundary) - self.lower_bound[1])/tfm.abs(self.upper_bound[1] - self.lower_bound[1])
                 
                 P_boundary = tf.concat((p_boundary_scaled, r_boundary_scaled), axis=1)
                 f_pred_boundary = self.tf_call(P_boundary)
@@ -154,10 +151,15 @@ class PINN(tf.keras.Model):
             
             # For each step, sample data and pass to train_step
             for step in range(steps_per_epoch):
-                # Sample p and r according to a beta distribution between upper and lower bounds
-                dist = tfd.Beta(1, 5)
-                p = (dist.sample((batchsize, 1))*tfm.abs(self.upper_bound[0] - self.lower_bound[0])) + self.lower_bound[0]
-                r = (dist.sample((batchsize, 1))*tfm.abs(self.upper_bound[1] - self.lower_bound[1])) + self.lower_bound[1]
+                # Sample p and r according to a uniform distribution between upper and lower bounds
+                dist_p = tfd.Uniform(self.lower_bound[0], self.upper_bound[0])
+                dist_r = tfd.Uniform(self.lower_bound[1], self.upper_bound[1])
+
+                p = dist_p.sample((batchsize, 1))
+                r = dist_r.sample((batchsize, 1))
+                
+                p = tfm.exp(p)
+                r = tfm.exp(r)
                 
                 # Randomly sample boundary_batchsize from p_boundary and f_boundary
                 p_idx = np.expand_dims(np.random.choice(self.f_boundary.shape[0], boundary_batchsize, replace=False), axis=1)
@@ -166,7 +168,7 @@ class PINN(tf.keras.Model):
                 
                 # Create r_boundary array = r_HP
                 upper_boundary = np.zeros((boundary_batchsize, 1))
-                upper_boundary[:] = self.upper_bound[1]
+                upper_boundary[:] = tfm.exp(self.upper_bound[1])
                 r_boundary = tf.Variable(upper_boundary, dtype=tf.float32)
                 
                 # Train and get loss
@@ -298,11 +300,11 @@ def main():
     patience = 10
     batchsize = 1032
     boundary_batchsize = 256
-    n_samples = 20000
     epochs = 2000
+    n_samples = 20000
     save = False
     load_epoch = -1
-    filename = 'high_beta'
+    filename = 'high_beta_logUniform'
 
     # Initialize and fit the PINN
     pinn = PINN(inputs=inputs, outputs=outputs, lower_bound=lb, upper_bound=ub, p=p[:, 0], f_boundary=f_boundary[:, 0], size=size, n_samples=n_samples)
