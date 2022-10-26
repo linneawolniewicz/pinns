@@ -1,0 +1,6 @@
+*.ipynb_checkpoints
+michael_implementation
+*.out
+__pycache__
+.git
+*.pkl

@@ -2,6 +2,7 @@
 import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
+import sherpa
 import pickle as pkl
 
 tfd = tfp.distributions
@@ -92,6 +93,8 @@ class PINN(tf.keras.Model):
         P_predict: (N, 2) array: Input data for entire spatial and temporal domain. Used for vizualization for
         predictions at the end of each epoch. Michael created a very pretty video file with it. 
         
+        client, trial: Sherpa client and trial
+        
         alpha: weight on boundary_loss, 1-alpha weight on pinn_loss
         
         beta: pinn_loss scale factor
@@ -125,7 +128,7 @@ class PINN(tf.keras.Model):
     
     Outputs: Losses for each equation (Total, PDE, Boundary Value), and predictions for each epoch.
     '''
-    def fit(self, P_predict, alpha=0.5, beta=0.01, batchsize=64, boundary_batchsize=16, epochs=20, lr=3e-3, size=256, 
+    def fit(self, P_predict, client=None, trial=None, alpha=0.5, beta=1, batchsize=64, boundary_batchsize=16, epochs=20, lr=3e-3, size=256, 
             save=False, load_epoch=-1, lr_decay=-1, alpha_decay=-1, alpha_limit = 0.5, patience=3, filename=''):
         
         # If load == True, load the weights
@@ -152,11 +155,10 @@ class PINN(tf.keras.Model):
             # For each step, sample data and pass to train_step
             for step in range(steps_per_epoch):
                 # Sample p and r according to a uniform distribution between upper and lower bounds
-                dist_p = tfd.Uniform(self.lower_bound[0], self.upper_bound[0])
-                dist_r = tfd.Uniform(self.lower_bound[1], self.upper_bound[1])
+                dist = tfd.Beta(0.5, 0.5)
 
-                p = dist_p.sample((batchsize, 1))
-                r = dist_r.sample((batchsize, 1))
+                p = (dist.sample((batchsize, 1))*tfm.abs(self.upper_bound[0] - self.lower_bound[0])) + self.lower_bound[0]
+                r = (dist.sample((batchsize, 1))*tfm.abs(self.upper_bound[1] - self.lower_bound[1])) + self.lower_bound[1]
                 
                 p = tfm.exp(p)
                 r = tfm.exp(r)
@@ -201,6 +203,16 @@ class PINN(tf.keras.Model):
             if (epoch%10 == 0) & (save == True):
                 name = './ckpts/pinn_' + filename + '_epoch_' + str(epoch)
                 self.save_weights(name, overwrite=True, save_format=None, options=None)
+                
+            # Send metrics
+            if client:
+                obj = total_pinn_loss[epoch] + total_boundary_loss[epoch]
+                print(obj)
+                sherpa = client.send_metrics(
+                         trial=trial,
+                         iteration=epoch,
+                         objective=obj
+                )
         
         return total_pinn_loss, total_boundary_loss, predictions
     
@@ -249,91 +261,3 @@ class PINN(tf.keras.Model):
     @tf.function
     def tf_call(self, inputs): 
         return self.call(inputs, training=True)
-    
-###########################################################################################
-def main():
-    # Constants  
-    m = 0.938 # GeV/c^2
-    gamma = -3 # Between -2 and -3
-    size = 512 # size of r, T, p, and f_boundary
-    au = 150e6 # 150e6 m/AU
-    r_limits = [119, 120]
-    T_limits = [0.001, 1000]
-
-    # Create boundary data
-    T = np.logspace(np.log10(T_limits[0]), np.log10(T_limits[1]), size).flatten()[:, None]
-    p = (np.sqrt((T+m)**2-m**2)).flatten()[:,None] # GeV/c
-    r = np.logspace(np.log10(r_limits[0]*au), np.log10(r_limits[1]*au), size).flatten()[:, None] # km
-    f_boundary = ((T + m)**gamma)/(p**2) # particles/(m^3 (GeV/c)^3)
-
-    # Get upper and lower bounds
-    lb = np.array([p[0], r[0]], dtype='float32')
-    ub = np.array([p[-1], r[-1]], dtype='float32')
-
-    # Create test data
-    p_predict = np.log(p)
-    r_predict = np.log(r)
-
-    p_predict = (p_predict - np.log(lb[0]))/np.abs(np.log(ub[0]) - np.log(lb[0]))
-    r_predict = (r_predict - np.log(lb[1]))/np.abs(np.log(ub[1]) - np.log(lb[1]))
-
-    P, R = np.meshgrid(p_predict, r_predict)
-    P_predict = np.hstack((P.flatten()[:,None], R.flatten()[:,None]))
-
-    # Neural network. Note: 2 inputs- (p, r), 1 output- f(r, p)
-    inputs = tf.keras.Input((2))
-    x_ = tf.keras.layers.Dense(204, activation='selu')(inputs)
-    x_ = tf.keras.layers.Dense(204, activation='selu')(x_)
-    x_ = tf.keras.layers.Dense(204, activation='selu')(x_)
-    x_ = tf.keras.layers.Dense(204, activation='selu')(x_)
-    x_ = tf.keras.layers.Dense(204, activation='selu')(x_)
-    x_ = tf.keras.layers.Dense(204, activation='selu')(x_)
-    outputs = tf.keras.layers.Dense(1, activation='linear')(x_) 
-
-    # Hyperparameters
-    alpha = 0.99
-    alpha_decay = 0.998
-    alpha_limit = 0.2
-    beta = 1e9
-    lr = 3e-4
-    lr_decay = 0.95
-    patience = 10
-    batchsize = 1032
-    boundary_batchsize = 256
-    epochs = 2000
-    n_samples = 20000
-    save = False
-    load_epoch = -1
-    filename = 'high_beta_logUniform'
-
-    # Initialize and fit the PINN
-    pinn = PINN(inputs=inputs, outputs=outputs, lower_bound=lb, upper_bound=ub, p=p[:, 0], f_boundary=f_boundary[:, 0], size=size, n_samples=n_samples)
-    pinn_loss, boundary_loss, predictions = pinn.fit(P_predict=P_predict, alpha=alpha, beta=beta, batchsize=batchsize, boundary_batchsize=boundary_batchsize,
-                                                             epochs=epochs, lr=lr, size=size, save=save, load_epoch=load_epoch, lr_decay=lr_decay,
-                                                             alpha_decay=alpha_decay, patience=patience, filename=filename)
-    
-    # Save PINN outputs
-    with open('./figures/pickles/pinn_loss_' + filename + '.pkl', 'wb') as file:
-        pkl.dump(pinn_loss, file)
-
-    with open('./figures/pickles/boundary_loss_' + filename + '.pkl', 'wb') as file:
-        pkl.dump(boundary_loss, file)
-
-    with open('./figures/pickles/predictions_' + filename + '.pkl', 'wb') as file:
-        pkl.dump(predictions, file)
-
-#     with open('./figures/pickles/f_boundary.pkl', 'wb') as file:
-#         pkl.dump(f_boundary, file)
-
-#     with open('./figures/pickles/p.pkl', 'wb') as file:
-#         pkl.dump(p, file)
-
-#     with open('./figures/pickles/T.pkl', 'wb') as file:
-#         pkl.dump(T, file)
-
-#     with open('./figures/pickles/r.pkl', 'wb') as file:
-#         pkl.dump(r, file)
-
-if __name__=="__main__":
-    main()
-    
