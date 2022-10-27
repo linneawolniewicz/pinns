@@ -15,8 +15,6 @@
 #SBATCH --mail-type=END
 #SBATCH --mail-type=FAIL
 
-#echo hello
-
 export PATH="/home/linneamw/sadow_lts/personal/linneamw/anaconda3/bin:$PATH"
 source /home/linneamw/profiles/auto.profile
 conda activate pinns

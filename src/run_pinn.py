@@ -4,25 +4,31 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 import pickle as pkl
 from pinn import PINN
+import os
+import sys
 
 tfd = tfp.distributions
 tfm = tf.math
 tf.config.list_physical_devices(device_type=None)
 
 # Load data
-with open('./../data/f_boundary.pkl', 'rb') as file:
+CURRENT_PATH = os.getcwd()
+DATA_PATH = os.path.abspath(os.path.join(CURRENT_PATH, "..", "data"))
+OUTPUTS_PATH = os.path.abspath(os.path.join(CURRENT_PATH, "..", "outputs"))
+
+with open(DATA_PATH + '/f_boundary.pkl', 'rb') as file:
     f_boundary = pkl.load(file)
     
-with open('./../data/p.pkl', 'rb') as file:
+with open(DATA_PATH + '/p.pkl', 'rb') as file:
     p = pkl.load(file)
     
-with open('./../data/T.pkl', 'rb') as file:
+with open(DATA_PATH + '/T.pkl', 'rb') as file:
     T = pkl.load(file)
     
-with open('./../data/r.pkl', 'rb') as file:
+with open(DATA_PATH + '/r.pkl', 'rb') as file:
     r = pkl.load(file)
     
-with open('./../data/P_predict.pkl', 'rb') as file:
+with open(DATA_PATH + '/P_predict.pkl', 'rb') as file:
     P_predict = pkl.load(file)
     
 # Get upper and lower bounds
@@ -63,11 +69,11 @@ pinn_loss, boundary_loss, predictions = pinn.fit(P_predict=P_predict, alpha=alph
                                                  lr_decay=lr_decay, alpha_decay=alpha_decay, patience=patience, filename=filename)
 
 # Save PINN outputs
-with open('./../outputs/pinn_loss_' + filename + '.pkl', 'wb') as file:
+with open(OUTPUTS_PATH + '/pinn_loss_' + filename + '.pkl', 'wb') as file:
     pkl.dump(pinn_loss, file)
     
-with open('./../outputs/boundary_loss_' + filename + '.pkl', 'wb') as file:
+with open(OUTPUTS_PATH + '/boundary_loss_' + filename + '.pkl', 'wb') as file:
     pkl.dump(boundary_loss, file)
      
-with open('./../outputs/predictions_' + filename + '.pkl', 'wb') as file:
+with open(OUTPUTS_PATH + '/predictions_' + filename + '.pkl', 'wb') as file:
     pkl.dump(predictions, file)

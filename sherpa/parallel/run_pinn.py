@@ -11,8 +11,9 @@ tfd = tfp.distributions
 tfm = tf.math
 tf.config.list_physical_devices(device_type=None)
 
-CURRENT_PATH = os.path.dirname(__file__)
+CURRENT_PATH = os.getcwd()
 PINN_PATH = os.path.abspath(os.path.join(CURRENT_PATH, "..", "..", "src"))
+DATA_PATH = os.path.abspath(os.path.join(CURRENT_PATH, "..", "..", "data"))
 sys.path.insert(1, PINN_PATH)
 
 from pinn import PINN
@@ -20,19 +21,19 @@ from pinn import PINN
 
 def main(client, trial):
     # Load data
-    with open('./../data/f_boundary.pkl', 'rb') as file:
+    with open(DATA_PATH + '/f_boundary.pkl', 'rb') as file:
         f_boundary = pkl.load(file)
 
-    with open('./../data/p.pkl', 'rb') as file:
+    with open(DATA_PATH + '/p.pkl', 'rb') as file:
         p = pkl.load(file)
 
-    with open('./../data/T.pkl', 'rb') as file:
+    with open(DATA_PATH + '/T.pkl', 'rb') as file:
         T = pkl.load(file)
 
-    with open('./../data/r.pkl', 'rb') as file:
+    with open(DATA_PATH + '/r.pkl', 'rb') as file:
         r = pkl.load(file)
 
-    with open('./../data/P_predict.pkl', 'rb') as file:
+    with open(DATA_PATH + '/P_predict.pkl', 'rb') as file:
         P_predict = pkl.load(file)
     
     # Sherpa
@@ -53,9 +54,9 @@ def main(client, trial):
     load_epoch = -1
     filename = ''
     n_samples = 20000
-    lr = hyperparameters.get['lr']
-    num_layers = hyperparameters.get['num_layers']
-    num_hidden_units = hyperparameters.get['num_hidden_units']
+    lr = hyperparameters['lr']
+    num_layers = hyperparameters['num_layers']
+    num_hidden_units = hyperparameters['num_hidden_units']
 
     # Create model
     inputs = tf.keras.Input((2))
@@ -73,8 +74,6 @@ def main(client, trial):
 if __name__ == '__main__':
     client = sherpa.Client()
     trial = client.get_trial()
-    
-    print('Made it to the main method!')
     
     main(client, trial)
     

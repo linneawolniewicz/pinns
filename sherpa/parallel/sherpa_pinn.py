@@ -7,7 +7,7 @@ import sherpa.algorithms
 import tensorflow as tf
 
 # Set-up output directory
-output_dir = '/home/linneamw/sadow_lts/personal/linneamw/research/pinns/sherpa/parallel_output'
+output_dir = '/home/linneamw/sadow_lts/personal/linneamw/research/pinns/sherpa/parallel/output'
 if os.path.isdir(output_dir):
     print('Warning: Overwriting directory {}'.format(output_dir))
     import shutil
@@ -24,17 +24,16 @@ parameters = [
 
 n_trials = 5
 algorithm = sherpa.algorithms.RandomSearch(max_num_trials=n_trials)
-env = '/home/linneamw/sadow_lts/personal/linneamw/anaconda3/envs/pinns'
-# opt = '-N 1 -J sherpa_pinns -p gpu --gres=gpu:1 --constraint="volta" --mem=32gb -c 8 -t 3-00:00:00'
-opt = '-N 1 -J sherpa -p sadow --account sadow --gres=gpu:NV-RTX2070:1 --mem=32gb -c 3 -t 3-00:00:00 --chdir=./ --export=SOMEVAR=test'
+environment = '/home/linneamw/sadow_lts/personal/linneamw/anaconda3/envs/pinns'
+options = '-N 1 -J sherpa -p sadow --account sadow --gres=gpu:NV-RTX2070:1 --mem=32gb -c 3 -t 3-00:00:00'
 
-scheduler = sherpa.schedulers.SLURMScheduler(environment=env,
-                                             submit_options=opt,
+scheduler = sherpa.schedulers.SLURMScheduler(environment=environment,
+                                             submit_options=options,
                                              output_dir=output_dir)
 
 db_port = sherpa.core._port_finder(8895, 8910)
 
-filename = '/home/linneamw/sadow_lts/personal/linneamw/research/pinns/sherpa/run_pinn.py'
+filename = '/home/linneamw/sadow_lts/personal/linneamw/research/pinns/sherpa/parallel/run_pinn.py'
 
 print(f'Running mongodb on port: {db_port}')
 
@@ -49,6 +48,5 @@ results = sherpa.optimize(parameters=parameters,
                           db_port=db_port,
                           mongodb_args={'bind_ip_all':''}
                          )
-print(results)
 
 pkl.dump(results, open(output_dir + '/results.pkl', 'wb'))

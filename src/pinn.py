@@ -207,12 +207,10 @@ class PINN(tf.keras.Model):
             # Send metrics
             if client:
                 obj = total_pinn_loss[epoch] + total_boundary_loss[epoch]
-                print(obj)
-                sherpa = client.send_metrics(
+                client.send_metrics(
                          trial=trial,
                          iteration=epoch,
-                         objective=obj
-                )
+                         objective=obj)
         
         return total_pinn_loss, total_boundary_loss, predictions
     
