@@ -35,11 +35,17 @@ def main(client, trial):
 
     with open(DATA_PATH + '/P_predict.pkl', 'rb') as file:
         P_predict = pkl.load(file)
+        
+    # Get upper and lower bounds
+    lb = np.array([p[0], r[0]], dtype='float32')
+    ub = np.array([p[-1], r[-1]], dtype='float32')
+    size = len(f_boundary[:, 0])
     
     # Sherpa
     hyperparameters = trial.parameters
 
     # Hyperparameters
+    epochs = 300
     alpha = 0.99
     alpha_decay = 0.998
     alpha_limit = 0.1
@@ -48,7 +54,6 @@ def main(client, trial):
     patience = 10
     batchsize = 1032
     boundary_batchsize = 256
-    epochs = 100
     activation = 'selu'
     save = False
     load_epoch = -1

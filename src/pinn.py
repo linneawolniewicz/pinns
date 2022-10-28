@@ -78,7 +78,8 @@ class PINN(tf.keras.Model):
             f_r = t1.gradient(f, r)
             
             pinn_loss = beta*self.pinn_loss(p, r, f_p, f_r)
-            total_loss = (1-alpha)*pinn_loss + alpha*boundary_loss
+            # total_loss = (1-alpha)*pinn_loss + alpha*boundary_loss
+            total_loss = boundary_loss
 
         # Backpropagation
         gradients = t2.gradient(total_loss, self.trainable_variables)
@@ -155,7 +156,7 @@ class PINN(tf.keras.Model):
             # For each step, sample data and pass to train_step
             for step in range(steps_per_epoch):
                 # Sample p and r according to a uniform distribution between upper and lower bounds
-                dist = tfd.Beta(0.5, 0.5)
+                dist = tfd.Beta(10, 1)
 
                 p = (dist.sample((batchsize, 1))*tfm.abs(self.upper_bound[0] - self.lower_bound[0])) + self.lower_bound[0]
                 r = (dist.sample((batchsize, 1))*tfm.abs(self.upper_bound[1] - self.lower_bound[1])) + self.lower_bound[1]

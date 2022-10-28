@@ -3,7 +3,6 @@ import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
 import pickle as pkl
-from pinn import PINN
 import os
 import sys
 
@@ -13,9 +12,14 @@ tf.config.list_physical_devices(device_type=None)
 
 # Load data
 CURRENT_PATH = os.getcwd()
-DATA_PATH = os.path.abspath(os.path.join(CURRENT_PATH, "..", "data"))
-OUTPUTS_PATH = os.path.abspath(os.path.join(CURRENT_PATH, "..", "outputs"))
+PINN_PATH = os.path.abspath(os.path.join(CURRENT_PATH, "src"))
+DATA_PATH = os.path.abspath(os.path.join(CURRENT_PATH, "data"))
+OUTPUTS_PATH = os.path.abspath(os.path.join(CURRENT_PATH, "outputs"))
 
+sys.path.insert(1, PINN_PATH)
+from pinn import PINN
+
+# Load data
 with open(DATA_PATH + '/f_boundary.pkl', 'rb') as file:
     f_boundary = pkl.load(file)
     
@@ -37,23 +41,23 @@ ub = np.array([p[-1], r[-1]], dtype='float32')
 size = len(f_boundary[:, 0])
 
 # Hyperparameters
-epochs = 10
-alpha = 0.99
+epochs = 1000
+alpha = 0.97
 alpha_decay = 0.998
-alpha_limit = 0.1
+alpha_limit = 0.2
 beta = 1e9
 lr_decay = 0.95
 patience = 10
 batchsize = 1032
-boundary_batchsize = 256
+boundary_batchsize = 512
 activation = 'selu'
 save = False
 load_epoch = -1
-filename = ''
+filename = 'noPinnLoss'
 n_samples = 20000
 lr = 3e-4
-num_layers = 2
-num_hidden_units = 10
+num_layers = 7
+num_hidden_units = 442
 
 # Create model
 inputs = tf.keras.Input((2))

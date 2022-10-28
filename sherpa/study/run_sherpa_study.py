@@ -12,8 +12,9 @@ tfm = tf.math
 tf.config.list_physical_devices(device_type=None)
 
 CURRENT_PATH = os.getcwd()
-PINN_PATH = os.path.abspath(os.path.join(CURRENT_PATH, "..", "..", "src"))
-DATA_PATH = os.path.abspath(os.path.join(CURRENT_PATH, "..", "..", "data"))
+PINN_PATH = os.path.abspath(os.path.join(CURRENT_PATH, "src"))
+DATA_PATH = os.path.abspath(os.path.join(CURRENT_PATH, "data"))
+OUTPUTS_PATH = os.path.abspath(os.path.join(CURRENT_PATH, "sherpa", "study"))
 sys.path.insert(1, PINN_PATH)
 
 from pinn import PINN
@@ -35,6 +36,11 @@ def main(client, trial):
 
     with open(DATA_PATH + '/P_predict.pkl', 'rb') as file:
         P_predict = pkl.load(file)
+        
+    # Get upper and lower bounds
+    lb = np.array([p[0], r[0]], dtype='float32')
+    ub = np.array([p[-1], r[-1]], dtype='float32')
+    size = len(f_boundary[:, 0])
 
     # Sherpa
     parameters = [
@@ -117,25 +123,25 @@ def main(client, trial):
         dfs.append(df)
         
         # Every 5 trials save dataframe
-        if i%5==0: pd.concat(dfs).to_csv('./outputs/sherpa_' + str(n_run) + '.csv')
+        if i%5==0: pd.concat(dfs).to_csv(OUTPUTS_PATH + '/outputs/sherpa_' + str(n_run) + '.csv')
         
         # Pickle predictions and losses
-        with open('./pickles/pinn_loss_sherpa_' + str(n_run) + '_trial_id_' + str(i) + '.pkl', 'wb') as file:
+        with open(OUTPUTS_PATH + '/pickles/pinn_loss_sherpa_' + str(n_run) + '_trial_id_' + str(i) + '.pkl', 'wb') as file:
             pkl.dump(pinn_loss, file)
-        with open('./pickles/boundary_loss_sherpa_' + str(n_run) + '_trial_id_' + str(i) + '.pkl', 'wb') as file:
+        with open(OUTPUTS_PATH + '/pickles/boundary_loss_sherpa_' + str(n_run) + '_trial_id_' + str(i) + '.pkl', 'wb') as file:
             pkl.dump(boundary_loss, file)
-        with open('./pickles/predictions_sherpa_' + str(n_run) + '_trial_id_' + str(i) + '.pkl', 'wb') as file:
+        with open(OUTPUTS_PATH + '/pickles/predictions_sherpa_' + str(n_run) + '_trial_id_' + str(i) + '.pkl', 'wb') as file:
             pkl.dump(predictions, file)
         
         # Write progress.txt
         end = time.time()
         line = '===============================================\n'
         line += "Trial id: {}, elapsed time: {:.3f}".format(i, end - start) + '\n'
-        with open('progress.txt', 'a') as f:
+        with open(OUTPUTS_PATH + '/progress.txt', 'a') as f:
             f.write(line)
             
     # Save final dataframe
-    pd.concat(dfs).to_csv('./outputs/sherpa_' + str(n_run) + '.csv')
+    pd.concat(dfs).to_csv(OUTPUTS_PATH + '/outputs/sherpa_' + str(n_run) + '.csv')
 
 if __name__ == '__main__':
     main()

@@ -4,3 +4,5 @@ michael_implementation
 __pycache__
 .git
 *.pkl
+sherpa/parallel/output/*
+
