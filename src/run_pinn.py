@@ -41,7 +41,7 @@ ub = np.array([p[-1], r[-1]], dtype='float32')
 size = len(f_boundary[:, 0])
 
 # Hyperparameters
-epochs = 1000
+epochs = 300
 alpha = 0.97
 alpha_decay = 0.998
 alpha_limit = 0.2
@@ -51,9 +51,9 @@ patience = 10
 batchsize = 1032
 boundary_batchsize = 512
 activation = 'selu'
-save = False
+save = True
 load_epoch = -1
-filename = 'noPinnLoss'
+filename = 'logBoundaryLoss'
 n_samples = 20000
 lr = 3e-4
 num_layers = 7

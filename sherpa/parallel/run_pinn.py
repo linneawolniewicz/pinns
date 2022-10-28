@@ -45,20 +45,20 @@ def main(client, trial):
     hyperparameters = trial.parameters
 
     # Hyperparameters
-    epochs = 300
+    epochs = 200
     alpha = 0.99
     alpha_decay = 0.998
     alpha_limit = 0.1
-    beta = 1e9
     lr_decay = 0.95
     patience = 10
     batchsize = 1032
-    boundary_batchsize = 256
+    boundary_batchsize = 512
     activation = 'selu'
     save = False
     load_epoch = -1
     filename = ''
     n_samples = 20000
+    beta = hyperparameters['beta']
     lr = hyperparameters['lr']
     num_layers = hyperparameters['num_layers']
     num_hidden_units = hyperparameters['num_hidden_units']

@@ -13,3 +13,4 @@ sherpa/parallel/output/*
 *.lock
 *.bson
 WiredTiger*
+outputs/ckpts/*

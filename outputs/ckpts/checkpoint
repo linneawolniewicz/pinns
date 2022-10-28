@@ -1,0 +1,2 @@
+model_checkpoint_path: "pinn_logBoundaryLoss_epoch_0"
+all_model_checkpoint_paths: "pinn_logBoundaryLoss_epoch_0"

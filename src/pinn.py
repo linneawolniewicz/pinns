@@ -70,16 +70,19 @@ class PINN(tf.keras.Model):
                 
                 P_boundary = tf.concat((p_boundary_scaled, r_boundary_scaled), axis=1)
                 f_pred_boundary = self.tf_call(P_boundary)
-
-                boundary_loss = tfm.reduce_mean(tfm.abs(f_pred_boundary - f_boundary))
+                
+                f_boundary = tf.cast(f_boundary, dtype=tf.float32)
+                boundary_loss = tfm.reduce_mean(tfm.abs(tfm.log(tfm.abs(f_pred_boundary)) - tfm.log(f_boundary)))
 
             # Calculate first-order PINN gradients
             f_p = t1.gradient(f, p)
             f_r = t1.gradient(f, r)
             
             pinn_loss = beta*self.pinn_loss(p, r, f_p, f_r)
-            # total_loss = (1-alpha)*pinn_loss + alpha*boundary_loss
-            total_loss = boundary_loss
+            
+            print(pinn_loss.dtype, boundary_loss.dtype)
+            
+            total_loss = (1-alpha)*pinn_loss + alpha*boundary_loss
 
         # Backpropagation
         gradients = t2.gradient(total_loss, self.trainable_variables)
@@ -134,7 +137,7 @@ class PINN(tf.keras.Model):
         
         # If load == True, load the weights
         if load_epoch != -1:
-            name = './ckpts/pinn_' + filename + '_epoch_' + str(load_epoch)
+            name = './outputs/ckpts/pinn_' + filename + '_epoch_' + str(load_epoch)
             self.load_weights(name)
         
         # Initialize
@@ -156,7 +159,7 @@ class PINN(tf.keras.Model):
             # For each step, sample data and pass to train_step
             for step in range(steps_per_epoch):
                 # Sample p and r according to a uniform distribution between upper and lower bounds
-                dist = tfd.Beta(10, 1)
+                dist = tfd.Beta(1.5, 1)
 
                 p = (dist.sample((batchsize, 1))*tfm.abs(self.upper_bound[0] - self.lower_bound[0])) + self.lower_bound[0]
                 r = (dist.sample((batchsize, 1))*tfm.abs(self.upper_bound[1] - self.lower_bound[1])) + self.lower_bound[1]
@@ -201,8 +204,8 @@ class PINN(tf.keras.Model):
                 alpha = alpha_decay*alpha
 
             # If the epoch is a multiple of 10, save to a checkpoint
-            if (epoch%10 == 0) & (save == True):
-                name = './ckpts/pinn_' + filename + '_epoch_' + str(epoch)
+            if (epoch%50 == 0) & (save == True):
+                name = './outputs/ckpts/pinn_' + filename + '_epoch_' + str(epoch)
                 self.save_weights(name, overwrite=True, save_format=None, options=None)
                 
             # Send metrics
