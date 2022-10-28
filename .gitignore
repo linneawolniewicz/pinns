@@ -4,5 +4,12 @@ michael_implementation
 __pycache__
 .git
 *.pkl
+sherpa/parallel/output/diagnostic.data
+sherpa/parallel/output/jobs
+sherpa/parallel/output/journal
+sherpa/parallel/output
 sherpa/parallel/output/*
-
+*.wt
+*.lock
+*.bson
+WiredTiger*
