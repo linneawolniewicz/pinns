@@ -48,7 +48,7 @@ def main(client, trial):
     # Hyperparameters
     epochs = 150
     alpha = 1
-    alpha_limit = 0.1
+    alpha_limit = 0
     lr_decay = 0.95
     patience = 10
     batchsize = 1032
@@ -72,9 +72,9 @@ def main(client, trial):
 
     # Train the PINN
     pinn = PINN(inputs=inputs, outputs=outputs, lower_bound=lb, upper_bound=ub, p=p[:, 0], f_boundary=f_boundary[:, 0], f_bound=f_bound, size=size, n_samples=n_samples)
-    pinn_loss, boundary_loss, predictions = pinn.fit(P_predict=P_predict, client=client, trial=trial, alpha=alpha, batchsize=batchsize, 
+    pinn_loss, boundary_loss, predictions = pinn.fit(P_predict=P_predict, client=None, trial=None, alpha=alpha, batchsize=batchsize, 
                                                      boundary_batchsize=boundary_batchsize, epochs=epochs, lr=lr, size=size, save=save, load_epoch=load_epoch, 
-                                                     lr_decay=lr_decay, alpha_decay=alpha_decay, patience=patience, filename=filename)
+                                                     lr_decay=lr_decay, alpha_decay=alpha_decay, alpha_limit=alpha_limit, patience=patience, filename=filename)
 
 if __name__ == '__main__':
     client = sherpa.Client()

@@ -20,7 +20,7 @@ m = 0.938 # GeV/c^2
 gamma = -3 # Between -2 and -3
 size = 512 # size of r, T, p, and f_boundary
 au = 150e6 # 150e6 m/AU
-r_limits = [119, 120] 
+r_limits = [0.4, 120] 
 T_limits = [0.001, 1000]
 
 # Create boundary data
