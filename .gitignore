@@ -14,3 +14,4 @@ sherpa/parallel/output/*
 *.bson
 WiredTiger*
 outputs/ckpts/*
+sherpa/study/outputs/*

@@ -9,7 +9,7 @@
 #SBATCH --time 3-00:00:00
 #SBATCH --error=./error_%j.err
 #SBATCH --output=./output_%j.out
-#SBATCH --mem=12gb
+#SBATCH --mem=32gb
 #SBATCH --mail-user=linneamw@hawaii.edu
 #SBATCH --mail-type=BEGIN
 #SBATCH --mail-type=END

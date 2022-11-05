@@ -17,14 +17,15 @@ This PINN in particular solves the force-field equation for solar modulation of 
 domain bounds and the input space. 
 '''
 class PINN(tf.keras.Model):
-    def __init__(self, inputs, outputs, lower_bound, upper_bound, p, f_boundary, size, n_samples=20000):
+    def __init__(self, inputs, outputs, lower_bound, upper_bound, p, f_boundary, f_bound, size, n_samples=20000):
         super(PINN, self).__init__(inputs=inputs, outputs=outputs)
-        self.lower_bound = tfm.log(lower_bound)
-        self.upper_bound = tfm.log(upper_bound)
+        self.lower_bound = lower_bound
+        self.upper_bound = upper_bound
         self.p = p
         self.f_boundary = f_boundary
         self.n_samples = n_samples
         self.size = size
+        self.f_bound = f_bound
         
     '''
     Description: A system of PDEs are determined by 2 types of equations: the main partial differential equations 
@@ -47,11 +48,9 @@ class PINN(tf.keras.Model):
         
         alpha: weight on boundary_loss, 1-alpha weight on pinn_loss
         
-        beta: pinn_loss scale factor
-        
     Outputs: sum_loss, pinn_loss, boundary_loss
     '''
-    def train_step(self, p, r, p_boundary, r_boundary, f_boundary, alpha, beta):
+    def train_step(self, p, r, p_boundary, r_boundary, f_boundary, alpha):
         with tf.GradientTape(persistent=True) as t2: 
             with tf.GradientTape(persistent=True) as t1: 
                 t1.watch(p)
@@ -71,17 +70,20 @@ class PINN(tf.keras.Model):
                 P_boundary = tf.concat((p_boundary_scaled, r_boundary_scaled), axis=1)
                 f_pred_boundary = self.tf_call(P_boundary)
                 
-                f_boundary = tf.cast(f_boundary, dtype=tf.float32)
-                boundary_loss = tfm.reduce_mean(tfm.abs(tfm.log(tfm.abs(f_pred_boundary)) - tfm.log(f_boundary)))
+                boundary_loss = tfm.reduce_mean(tfm.abs(f_pred_boundary - f_boundary))
 
             # Calculate first-order PINN gradients
-            f_p = t1.gradient(f, p)
-            f_r = t1.gradient(f, r)
+            g_p = t1.gradient(f, p)
+            g_r = t1.gradient(f, r)
             
-            pinn_loss = beta*self.pinn_loss(p, r, f_p, f_r)
+            # Calculate f_p and f_r using chain rule
+            diff = tfm.abs(self.f_bound[1] - self.f_bound[0])
+            f_g = diff*tfm.exp(diff*f + self.f_bound[0])
             
-            print(pinn_loss.dtype, boundary_loss.dtype)
+            f_p = f_g*g_p
+            f_r = f_g*g_r
             
+            pinn_loss = self.pinn_loss(p, r, f_p, f_r)
             total_loss = (1-alpha)*pinn_loss + alpha*boundary_loss
 
         # Backpropagation
@@ -100,8 +102,6 @@ class PINN(tf.keras.Model):
         client, trial: Sherpa client and trial
         
         alpha: weight on boundary_loss, 1-alpha weight on pinn_loss
-        
-        beta: pinn_loss scale factor
         
         batchsize: batchsize for (p, r) in train step
         
@@ -132,7 +132,7 @@ class PINN(tf.keras.Model):
     
     Outputs: Losses for each equation (Total, PDE, Boundary Value), and predictions for each epoch.
     '''
-    def fit(self, P_predict, client=None, trial=None, alpha=0.5, beta=1, batchsize=64, boundary_batchsize=16, epochs=20, lr=3e-3, size=256, 
+    def fit(self, P_predict, client=None, trial=None, alpha=0.5, batchsize=64, boundary_batchsize=16, epochs=20, lr=3e-3, size=256, 
             save=False, load_epoch=-1, lr_decay=-1, alpha_decay=-1, alpha_limit = 0.5, patience=3, filename=''):
         
         # If load == True, load the weights
@@ -159,7 +159,7 @@ class PINN(tf.keras.Model):
             # For each step, sample data and pass to train_step
             for step in range(steps_per_epoch):
                 # Sample p and r according to a uniform distribution between upper and lower bounds
-                dist = tfd.Beta(1.5, 1)
+                dist = tfd.Uniform(0, 1)
 
                 p = (dist.sample((batchsize, 1))*tfm.abs(self.upper_bound[0] - self.lower_bound[0])) + self.lower_bound[0]
                 r = (dist.sample((batchsize, 1))*tfm.abs(self.upper_bound[1] - self.lower_bound[1])) + self.lower_bound[1]
@@ -178,15 +178,15 @@ class PINN(tf.keras.Model):
                 r_boundary = tf.Variable(upper_boundary, dtype=tf.float32)
                 
                 # Train and get loss
-                losses = self.train_step(p, r, p_boundary, r_boundary, f_boundary, alpha, beta)
+                losses = self.train_step(p, r, p_boundary, r_boundary, f_boundary, alpha)
                 pinn_loss[step] = losses[0]
                 boundary_loss[step] = losses[1]
             
             # Sum losses
             total_pinn_loss[epoch] = np.sum(pinn_loss)
             total_boundary_loss[epoch] = np.sum(boundary_loss)
-            print(f'Epoch {epoch}. Current alpha: {alpha:.4f}, lr: {lr:.6f}. Training losses: pinn: {total_pinn_loss[epoch]:.10f}, ' +
-                  f'boundary: {total_boundary_loss[epoch]:.6f}, weighted total: {((alpha*total_boundary_loss[epoch])+((1-alpha)*total_pinn_loss[epoch])):.10f}')
+            print(f'Epoch {epoch}. Current alpha: {alpha:.6f}, lr: {lr:.10f}. Training losses: pinn: {total_pinn_loss[epoch]}, ' +
+                  f'boundary: {total_boundary_loss[epoch]:.6f}, weighted total: {((alpha*total_boundary_loss[epoch])+((1-alpha)*total_pinn_loss[epoch])):.50f}')
             
             predictions[:, :, epoch] = self.predict(P_predict, batchsize)
             
@@ -203,14 +203,17 @@ class PINN(tf.keras.Model):
             if (alpha_decay != -1) & (alpha >= alpha_limit):
                 alpha = alpha_decay*alpha
 
-            # If the epoch is a multiple of 10, save to a checkpoint
-            if (epoch%50 == 0) & (save == True):
+            # If the epoch is a multiple of 100, save to a checkpoint
+            if (epoch%100 == 0) & (save == True):
                 name = './outputs/ckpts/pinn_' + filename + '_epoch_' + str(epoch)
                 self.save_weights(name, overwrite=True, save_format=None, options=None)
                 
             # Send metrics
             if client:
-                obj = total_pinn_loss[epoch] + total_boundary_loss[epoch]
+                if (np.isnan(total_pinn_loss[epoch]) and np.isnan(total_boundary_loss[epoch])):
+                    obj = np.inf
+                else:
+                    obj = total_pinn_loss[epoch] + total_boundary_loss[epoch]
                 client.send_metrics(
                          trial=trial,
                          iteration=epoch,

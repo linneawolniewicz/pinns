@@ -39,15 +39,15 @@ def main(client, trial):
     # Get upper and lower bounds
     lb = np.array([p[0], r[0]], dtype='float32')
     ub = np.array([p[-1], r[-1]], dtype='float32')
+    f_bound = np.array([-34.54346331847909, 6.466899920699378], dtype='float32')
     size = len(f_boundary[:, 0])
     
     # Sherpa
     hyperparameters = trial.parameters
 
     # Hyperparameters
-    epochs = 200
-    alpha = 0.99
-    alpha_decay = 0.998
+    epochs = 150
+    alpha = 1
     alpha_limit = 0.1
     lr_decay = 0.95
     patience = 10
@@ -58,7 +58,7 @@ def main(client, trial):
     load_epoch = -1
     filename = ''
     n_samples = 20000
-    beta = hyperparameters['beta']
+    alpha_decay = hyperparameters['alpha_decay']
     lr = hyperparameters['lr']
     num_layers = hyperparameters['num_layers']
     num_hidden_units = hyperparameters['num_hidden_units']
@@ -71,8 +71,8 @@ def main(client, trial):
     outputs = tf.keras.layers.Dense(1, activation='linear')(x_)
 
     # Train the PINN
-    pinn = PINN(inputs=inputs, outputs=outputs, lower_bound=lb, upper_bound=ub, p=p[:, 0], f_boundary=f_boundary[:, 0], size=size, n_samples=n_samples)
-    pinn_loss, boundary_loss, predictions = pinn.fit(client, trial, P_predict=P_predict, alpha=alpha, beta=beta, batchsize=batchsize, 
+    pinn = PINN(inputs=inputs, outputs=outputs, lower_bound=lb, upper_bound=ub, p=p[:, 0], f_boundary=f_boundary[:, 0], f_bound=f_bound, size=size, n_samples=n_samples)
+    pinn_loss, boundary_loss, predictions = pinn.fit(P_predict=P_predict, client=client, trial=trial, alpha=alpha, batchsize=batchsize, 
                                                      boundary_batchsize=boundary_batchsize, epochs=epochs, lr=lr, size=size, save=save, load_epoch=load_epoch, 
                                                      lr_decay=lr_decay, alpha_decay=alpha_decay, patience=patience, filename=filename)
 

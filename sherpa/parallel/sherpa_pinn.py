@@ -17,22 +17,23 @@ else:
 
 # Sherpa
 parameters = [
-    sherpa.Ordinal(name='beta', range=[1e8, 1e9]),
-    sherpa.Ordinal(name='lr', range=[3e-3, 3e-4, 3e-5, 3e-6]),
-    sherpa.Discrete(name='num_hidden_units', range=[200, 1000]),
-    sherpa.Discrete(name='num_layers', range=[3, 20]),
+    sherpa.Continuous(name='alpha_decay', range=[0.999, 1]),
+    sherpa.Continuous(name='lr', range=[3e-5, 3e-8]),
+    sherpa.Discrete(name='num_hidden_units', range=[10, 500]),
+    sherpa.Discrete(name='num_layers', range=[2, 10])
 ]
 
-n_trials = 300
+n_trials = 200
 algorithm = sherpa.algorithms.RandomSearch(max_num_trials=n_trials)
 environment = '/home/linneamw/sadow_lts/personal/linneamw/anaconda3/envs/pinns'
-options = '-N 1 -J sherpa -p sadow --account sadow --gres=gpu:NV-RTX2070:1 --mem=32gb -c 3 -t 3-00:00:00'
+options = '-N 1 -J sherpa -p sadow --account sadow --gres=gpu:NV-RTX2070:1 --mem=12gb -c 1 -t 3-00:00:00'
 
 scheduler = sherpa.schedulers.SLURMScheduler(environment=environment,
                                              submit_options=options,
                                              output_dir=output_dir)
 
-db_port = sherpa.core._port_finder(8895, 8910)
+# db_port = sherpa.core._port_finder(8895, 8910)
+db_port = 8910
 
 filename = '/home/linneamw/sadow_lts/personal/linneamw/research/pinns/sherpa/parallel/run_pinn.py'
 
@@ -44,7 +45,7 @@ results = sherpa.optimize(parameters=parameters,
                           filename=filename,
                           output_dir=output_dir,
                           scheduler=scheduler,
-                          max_concurrent=10,
+                          max_concurrent=15,
                           verbose=1,
                           db_port=db_port,
                           mongodb_args={'bind_ip_all':''}
