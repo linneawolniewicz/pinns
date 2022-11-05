@@ -55,7 +55,7 @@ def main():
         sherpa.Discrete(name='num_layers', range=[2, 10])
     ]
     
-    n_run = 100
+    n_run = 200
     study = sherpa.Study(
         parameters=parameters,
         algorithm=sherpa.algorithms.RandomSearch(max_num_trials=n_run),
@@ -65,7 +65,7 @@ def main():
     # Hyperparameters
     epochs = 50
     alpha = 1
-    alpha_limit = 0.1
+    alpha_limit = 0
     lr_decay = 0.95
     patience = 10
     batchsize = 1032

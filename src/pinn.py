@@ -55,6 +55,8 @@ class PINN(tf.keras.Model):
             with tf.GradientTape(persistent=True) as t1: 
                 t1.watch(p)
                 t1.watch(r)
+                t1.watch(p_boundary)
+                t1.watch(r_boundary)
                 
                 # PINN loss
                 p_scaled = (tfm.log(p) - self.lower_bound[0])/tfm.abs(self.upper_bound[0] - self.lower_bound[0])
@@ -76,14 +78,21 @@ class PINN(tf.keras.Model):
             g_p = t1.gradient(f, p)
             g_r = t1.gradient(f, r)
             
+            g_p_boundary = t1.gradient(f_pred_boundary, p_boundary)
+            g_r_boundary = t1.gradient(f_pred_boundary, r_boundary)
+            
             # Calculate f_p and f_r using chain rule
             diff = tfm.abs(self.f_bound[1] - self.f_bound[0])
             f_g = diff*tfm.exp(diff*f + self.f_bound[0])
+            f_g_boundary = diff*tfm.exp(diff*f_pred_boundary + self.f_bound[0])
             
             f_p = f_g*g_p
             f_r = f_g*g_r
             
-            pinn_loss = self.pinn_loss(p, r, f_p, f_r)
+            f_p_boundary = f_g_boundary*g_p_boundary
+            f_r_boundary = f_g_boundary*g_r_boundary
+            
+            pinn_loss = self.pinn_loss(p, r, f_p, f_r) + self.pinn_loss(p_boundary, r_boundary, f_p_boundary, f_r_boundary)
             total_loss = (1-alpha)*pinn_loss + alpha*boundary_loss
 
         # Backpropagation
@@ -186,7 +195,7 @@ class PINN(tf.keras.Model):
             total_pinn_loss[epoch] = np.sum(pinn_loss)
             total_boundary_loss[epoch] = np.sum(boundary_loss)
             print(f'Epoch {epoch}. Current alpha: {alpha:.6f}, lr: {lr:.10f}. Training losses: pinn: {total_pinn_loss[epoch]}, ' +
-                  f'boundary: {total_boundary_loss[epoch]:.6f}, weighted total: {((alpha*total_boundary_loss[epoch])+((1-alpha)*total_pinn_loss[epoch])):.50f}')
+                  f'boundary: {total_boundary_loss[epoch]:.6f}, weighted total: {((alpha*total_boundary_loss[epoch])+((1-alpha)*total_pinn_loss[epoch])):.10f}')
             
             predictions[:, :, epoch] = self.predict(P_predict, batchsize)
             
