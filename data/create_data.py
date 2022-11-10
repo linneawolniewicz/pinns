@@ -87,7 +87,7 @@ with open(DATA_PATH + '/p.pkl', 'wb') as file:
 with open(DATA_PATH + '/T.pkl', 'wb') as file:
     pkl.dump(T, file)
 
-with open(DATA_PATH + '/r_119au.pkl', 'wb') as file:
+with open(DATA_PATH + '/r.pkl', 'wb') as file:
     pkl.dump(r, file)
     
 with open(DATA_PATH + '/J.pkl', 'wb') as file:

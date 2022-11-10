@@ -167,14 +167,14 @@ class PINN(tf.keras.Model):
             
             # For each step, sample data and pass to train_step
             for step in range(steps_per_epoch):
-                # Sample p and r according to a uniform distribution between upper and lower bounds
-                dist = tfd.Uniform(0, 1)
+                # Sample p and r
+                beta_dist = tfd.Beta(3, 1)
+                uniform_dist = tfd.Uniform(0, 1)
 
-                p = (dist.sample((batchsize, 1))*tfm.abs(self.upper_bound[0] - self.lower_bound[0])) + self.lower_bound[0]
-                r = (dist.sample((batchsize, 1))*tfm.abs(self.upper_bound[1] - self.lower_bound[1])) + self.lower_bound[1]
-                
+                p = (uniform_dist.sample((batchsize, 1))*tfm.abs(ub[0] - lb[0])) + lb[0]
+                r = (beta_dist.sample((batchsize, 1))*tfm.abs(tfm.exp(ub[1]) - tfm.exp(lb[1]))) + tfm.exp(lb[1])
+
                 p = tfm.exp(p)
-                r = tfm.exp(r)
                 
                 # Randomly sample boundary_batchsize from p_boundary and f_boundary
                 p_idx = np.expand_dims(np.random.choice(self.f_boundary.shape[0], boundary_batchsize, replace=False), axis=1)
