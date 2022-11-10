@@ -42,22 +42,22 @@ f_bound = np.array([-34.54346331847909, 6.466899920699378], dtype='float32')
 size = len(f_boundary[:, 0])
 
 # Hyperparameters
-epochs = 500
+epochs = 1000
 alpha = 1
-alpha_decay = 0.9
+alpha_decay = 0.9945024823413915
 alpha_limit = 0
 lr_decay = 0.95
 patience = 10
 batchsize = 1032
 boundary_batchsize = 512
 activation = 'selu'
-save = False
+save = True
 load_epoch = -1
-filename = ''
+filename = 'newSampling'
 n_samples = 20000
-lr = 3e-6
-num_layers = 10
-num_hidden_units = 75
+lr = 7.931296428571565e-07
+num_layers = 6
+num_hidden_units = 162
 
 # Create model
 inputs = tf.keras.Input((2))

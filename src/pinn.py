@@ -171,8 +171,8 @@ class PINN(tf.keras.Model):
                 beta_dist = tfd.Beta(3, 1)
                 uniform_dist = tfd.Uniform(0, 1)
 
-                p = (uniform_dist.sample((batchsize, 1))*tfm.abs(ub[0] - lb[0])) + lb[0]
-                r = (beta_dist.sample((batchsize, 1))*tfm.abs(tfm.exp(ub[1]) - tfm.exp(lb[1]))) + tfm.exp(lb[1])
+                p = (uniform_dist.sample((batchsize, 1))*tfm.abs(self.upper_bound[0] - self.lower_bound[0])) + self.lower_bound[0]
+                r = (beta_dist.sample((batchsize, 1))*tfm.abs(tfm.exp(self.upper_bound[1]) - tfm.exp(self.lower_bound[1]))) + tfm.exp(self.lower_bound[1])
 
                 p = tfm.exp(p)
                 

@@ -3,10 +3,10 @@
 #SBATCH --partition=sadow
 #SBATCH --nodes=1
 ##SBATCH --J=pinns
-#SBATCH --tasks-per-node=1
-#SBATCH --cpus-per-task=1
+#SBATCH --tasks-per-node=2
+#SBATCH --cpus-per-task=2
 #SBATCH --time 3-00:00:00
-#SBATCH --mem=12gb
+#SBATCH --mem=24gb
 #SBATCH --mail-user=linneamw@hawaii.edu
 #SBATCH --mail-type=BEGIN
 #SBATCH --mail-type=END
