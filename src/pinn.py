@@ -19,13 +19,13 @@ domain bounds and the input space.
 class PINN(tf.keras.Model):
     def __init__(self, inputs, outputs, lower_bound, upper_bound, p, f_boundary, f_bound, size, n_samples=20000):
         super(PINN, self).__init__(inputs=inputs, outputs=outputs)
-        self.lower_bound = lower_bound
-        self.upper_bound = upper_bound
-        self.p = p
-        self.f_boundary = f_boundary
+        self.lower_bound = lower_bound # In log space
+        self.upper_bound = upper_bound # In log space
+        self.p = p # In real space
+        self.f_boundary = f_boundary # In log and scaled space
         self.n_samples = n_samples
         self.size = size
-        self.f_bound = f_bound
+        self.f_bound = f_bound # In log space
         
     '''
     Description: A system of PDEs are determined by 2 types of equations: the main partial differential equations 
@@ -44,13 +44,16 @@ class PINN(tf.keras.Model):
         equations. The boundary value loss relies on target data (**not an equation**), so we can just measure the MAE of 
         PINN(p_boundary, r_boundary) = f_pred_boundary and f_boundary.
         
-        f_boundary: (boundary_batchsize, 1) shaped arrays : This is the target data for the boundary value inputs
+        g_boundary: (boundary_batchsize, 1) shaped arrays : This is the target data for the boundary value inputs. G_boundary is the
+                    scaled version of f_boundary, and relates to f_boundary via g = (log(f) - min(log(f)))/(max(log(f)) - min(log(f)))
         
         alpha: weight on boundary_loss, 1-alpha weight on pinn_loss
         
+        beta: weight on pinn_loss to scale it to the same order of magnitude as boundary_loss
+        
     Outputs: sum_loss, pinn_loss, boundary_loss
     '''
-    def train_step(self, p, r, p_boundary, r_boundary, f_boundary, alpha):
+    def train_step(self, p, r, p_boundary, r_boundary, f_boundary, alpha, beta):
         with tf.GradientTape(persistent=True) as t2: 
             with tf.GradientTape(persistent=True) as t1: 
                 t1.watch(p)
@@ -58,41 +61,51 @@ class PINN(tf.keras.Model):
                 t1.watch(p_boundary)
                 t1.watch(r_boundary)
                 
-                # PINN loss
+                # PINN loss data
                 p_scaled = (tfm.log(p) - self.lower_bound[0])/tfm.abs(self.upper_bound[0] - self.lower_bound[0])
                 r_scaled = (tfm.log(r) - self.lower_bound[1])/tfm.abs(self.upper_bound[1] - self.lower_bound[1])
-                
                 P = tf.concat((p_scaled, r_scaled), axis=1)
-                f = self.tf_call(P)
+                g = self.tf_call(P)
 
-                # Boundary loss
+                # Boundary loss data
                 p_boundary_scaled = (tfm.log(p_boundary) - self.lower_bound[0])/tfm.abs(self.upper_bound[0] - self.lower_bound[0])
                 r_boundary_scaled = (tfm.log(r_boundary) - self.lower_bound[1])/tfm.abs(self.upper_bound[1] - self.lower_bound[1])
-                
                 P_boundary = tf.concat((p_boundary_scaled, r_boundary_scaled), axis=1)
-                f_pred_boundary = self.tf_call(P_boundary)
+                g_pred_boundary = self.tf_call(P_boundary)
                 
-                boundary_loss = tfm.reduce_mean(tfm.abs(f_pred_boundary - f_boundary))
+                # Calculate boundary loss
+                boundary_loss = tfm.reduce_mean(tfm.square(g_pred_boundary - f_boundary))
 
-            # Calculate first-order PINN gradients
-            g_p = t1.gradient(f, p)
-            g_r = t1.gradient(f, r)
+            # Calculate first-order gradients
+            g_p = t1.gradient(g, p)
+            g_r = t1.gradient(g, r)
             
-            g_p_boundary = t1.gradient(f_pred_boundary, p_boundary)
-            g_r_boundary = t1.gradient(f_pred_boundary, r_boundary)
+            g_p_boundary = t1.gradient(g_pred_boundary, p_boundary)
+            g_r_boundary = t1.gradient(g_pred_boundary, r_boundary)
             
-            # Calculate f_p and f_r using chain rule
-            diff = tfm.abs(self.f_bound[1] - self.f_bound[0])
-            f_g = diff*tfm.exp(diff*f + self.f_bound[0])
-            f_g_boundary = diff*tfm.exp(diff*f_pred_boundary + self.f_bound[0])
+            # Calculate f (real space) from g (scaled sapce) and get df/dg
+            with tf.GradientTape(persistent=True) as t3: 
+                t3.watch(g)
+                t3.watch(g_pred_boundary)
+                
+                diff = tfm.abs(self.f_bound[1] - self.f_bound[0])
+
+                f = tfm.exp(g*diff + self.f_bound[0])
+                f_pred_boundary = tfm.exp(g_pred_boundary*diff + self.f_bound[0])
+
+                f_g = t3.gradient(f, g)
+                f_g_boundary = t3.gradient(f_pred_boundary, g_pred_boundary)
             
+            # Use df/dg in the chain rule to calculate df/dp and df/dr
             f_p = f_g*g_p
             f_r = f_g*g_r
             
             f_p_boundary = f_g_boundary*g_p_boundary
             f_r_boundary = f_g_boundary*g_r_boundary
             
-            pinn_loss = self.pinn_loss(p, r, f_p, f_r) + self.pinn_loss(p_boundary, r_boundary, f_p_boundary, f_r_boundary)
+            # Calculate PINN loss and total loss
+            pinn_loss = beta*self.pinn_loss(p, r, f_p, f_r) + beta*self.pinn_loss(p_boundary, r_boundary, f_p_boundary, f_r_boundary)
+            
             total_loss = (1-alpha)*pinn_loss + alpha*boundary_loss
 
         # Backpropagation
@@ -111,6 +124,8 @@ class PINN(tf.keras.Model):
         client, trial: Sherpa client and trial
         
         alpha: weight on boundary_loss, 1-alpha weight on pinn_loss
+        
+        beta: weight on pinn_loss to scale it to the same order of magnitude as boundary_loss
         
         batchsize: batchsize for (p, r) in train step
         
@@ -133,6 +148,9 @@ class PINN(tf.keras.Model):
         alpha_decay: If -1, alpha will not be changed. Otherwise, alpha = alpha_decay*alpha if loss 
         hasn't decreased
         
+        r_lower_change: If -1, r_lower will not be changed. Otherwise r_lower will decrease from the self.upper_bound[1] to 
+        self.lower_bound[1].
+        
         alpha_limit = Minimum alpha value to decay to
         
         patience: Number of epochs to check whether loss has decreased before updating lr or alpha
@@ -141,8 +159,8 @@ class PINN(tf.keras.Model):
     
     Outputs: Losses for each equation (Total, PDE, Boundary Value), and predictions for each epoch.
     '''
-    def fit(self, P_predict, client=None, trial=None, alpha=0.5, batchsize=64, boundary_batchsize=16, epochs=20, lr=3e-3, size=256, 
-            save=False, load_epoch=-1, lr_decay=-1, alpha_decay=-1, alpha_limit = 0.5, patience=3, filename=''):
+    def fit(self, P_predict, client=None, trial=None, alpha=0.5, beta=1, batchsize=64, boundary_batchsize=16, epochs=20, lr=3e-3, size=256, 
+            save=False, load_epoch=-1, lr_decay=-1, alpha_decay=-1, r_lower_change=-1, alpha_limit = 0, patience=3, filename=''):
         
         # If load == True, load the weights
         if load_epoch != -1:
@@ -154,6 +172,9 @@ class PINN(tf.keras.Model):
         total_pinn_loss = np.zeros((epochs,))
         total_boundary_loss = np.zeros((epochs,))
         predictions = np.zeros((size**2, 1, epochs))
+        
+        # Lower r boundary
+        r_lower = self.upper_bound[1]
         
         # For each epoch, sample new values in the PINN and boundary areas and pass them to train_step
         for epoch in range(epochs):
@@ -172,9 +193,8 @@ class PINN(tf.keras.Model):
                 uniform_dist = tfd.Uniform(0, 1)
 
                 p = (uniform_dist.sample((batchsize, 1))*tfm.abs(self.upper_bound[0] - self.lower_bound[0])) + self.lower_bound[0]
-                r = (beta_dist.sample((batchsize, 1))*tfm.abs(tfm.exp(self.upper_bound[1]) - tfm.exp(self.lower_bound[1]))) + tfm.exp(self.lower_bound[1])
-
                 p = tfm.exp(p)
+                r = (beta_dist.sample((batchsize, 1))*tfm.abs(tfm.exp(self.upper_bound[1]) - tfm.exp(r_lower))) + tfm.exp(r_lower)
                 
                 # Randomly sample boundary_batchsize from p_boundary and f_boundary
                 p_idx = np.expand_dims(np.random.choice(self.f_boundary.shape[0], boundary_batchsize, replace=False), axis=1)
@@ -187,30 +207,35 @@ class PINN(tf.keras.Model):
                 r_boundary = tf.Variable(upper_boundary, dtype=tf.float32)
                 
                 # Train and get loss
-                losses = self.train_step(p, r, p_boundary, r_boundary, f_boundary, alpha)
+                losses = self.train_step(p, r, p_boundary, r_boundary, f_boundary, alpha, beta)
                 pinn_loss[step] = losses[0]
                 boundary_loss[step] = losses[1]
             
             # Sum losses
             total_pinn_loss[epoch] = np.sum(pinn_loss)
             total_boundary_loss[epoch] = np.sum(boundary_loss)
-            print(f'Epoch {epoch}. Current alpha: {alpha:.6f}, lr: {lr:.10f}. Training losses: pinn: {total_pinn_loss[epoch]}, ' +
-                  f'boundary: {total_boundary_loss[epoch]:.6f}, weighted total: {((alpha*total_boundary_loss[epoch])+((1-alpha)*total_pinn_loss[epoch])):.10f}')
+            print(f'Epoch {epoch}. Current alpha: {alpha:.6f}, lr: {lr:.10f}, r_lower: {(np.exp(r_lower[0])/150e6):.1f}. ' + 
+                  f'Training losses: pinn: {total_pinn_loss[epoch]:.10f}, boundary: {total_boundary_loss[epoch]:.10f}, ' +
+                  f'weighted total: {((alpha*total_boundary_loss[epoch])+((1-alpha)*total_pinn_loss[epoch])):.10f}')
             
             predictions[:, :, epoch] = self.predict(P_predict, batchsize)
             
             # Decay lr if loss hasn't decreased since current epoch - patience
+            hasntDecreased = False
             if (epoch > patience):
-                hasntDecreased = False
                 if (total_pinn_loss[epoch] + total_boundary_loss[epoch]) > (total_pinn_loss[epoch-patience] + total_boundary_loss[epoch-patience]):
                     hasntDecreased = True
                         
-                if (lr_decay != -1) & hasntDecreased:
-                    lr = lr_decay*lr
+            if (lr_decay != -1) & hasntDecreased:
+                lr = lr_decay*lr
 
             # Decrease alpha each epoch
-            if (alpha_decay != -1) & (alpha >= alpha_limit):
+            if (alpha_decay != -1) & (alpha >= alpha_limit) & (epoch%10 == 0):
                 alpha = alpha_decay*alpha
+            
+            # Decrease lower r boundary from 120au to 0.4au every 10 epochs
+            if (r_lower_change != -1) & (r_lower >= self.lower_bound[1]) & (epoch%10 == 0): #23.6) & (epoch%10 == 0):
+                r_lower = r_lower_change*r_lower
 
             # If the epoch is a multiple of 100, save to a checkpoint
             if (epoch%100 == 0) & (save == True):
@@ -267,7 +292,7 @@ class PINN(tf.keras.Model):
         k = beta*k_1*k_2
         
         # Calculate physics loss
-        l_f = tfm.reduce_mean(tfm.abs(f_r + (tfm.divide(R*V, 3*k) * f_p)))
+        l_f = tfm.reduce_mean(tfm.square(f_r + (tfm.divide(R*V, 3*k) * f_p)))
         
         return l_f
     

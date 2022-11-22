@@ -40,7 +40,7 @@ def main():
 
     with open(DATA_PATH + '/P_predict.pkl', 'rb') as file:
         P_predict = pkl.load(file)
-        
+
     # Get upper and lower bounds
     lb = np.log(np.array([p[0], r[0]], dtype='float32'))
     ub = np.log(np.array([p[-1], r[-1]], dtype='float32'))
@@ -50,6 +50,7 @@ def main():
     # Sherpa
     parameters = [
         sherpa.Continuous(name='alpha_decay', range=[0.99, 1]),
+        sherpa.Continuous(name='r_lower_change', range=[0.99, 1]),
         sherpa.Continuous(name='lr', range=[3e-5, 3e-8]),
         sherpa.Discrete(name='num_hidden_units', range=[10, 500]),
         sherpa.Discrete(name='num_layers', range=[2, 10])
@@ -63,8 +64,9 @@ def main():
     )
 
     # Hyperparameters
-    epochs = 50
+    epochs = 100
     alpha = 1
+    beta = 1e8
     alpha_limit = 0
     lr_decay = 0.95
     patience = 10
@@ -75,7 +77,7 @@ def main():
     load_epoch = -1
     filename = ''
     n_samples = 20000
-    
+
     # run Sherpa experiment
     dfs = []
     for i, trial in enumerate(study):
@@ -85,6 +87,7 @@ def main():
         
         # Get hyperparameters
         alpha_decay = trial.parameters['alpha_decay']
+        r_lower_change = trial.parameters['r_lower_change']
         lr = trial.parameters['lr']
         num_layers = trial.parameters['num_layers']
         num_hidden_units = trial.parameters['num_hidden_units']
@@ -98,9 +101,10 @@ def main():
                                   
         # Train the PINN
         pinn = PINN(inputs=inputs, outputs=outputs, lower_bound=lb, upper_bound=ub, p=p[:, 0], f_boundary=f_boundary[:, 0], f_bound=f_bound, size=size, n_samples=n_samples)
-        pinn_loss, boundary_loss, predictions = pinn.fit(P_predict=P_predict, client=None, trial=None, alpha=alpha, batchsize=batchsize, 
+        pinn_loss, boundary_loss, predictions = pinn.fit(P_predict=P_predict, client=None, trial=None, alpha=alpha, beta=beta, batchsize=batchsize, 
                                                          boundary_batchsize=boundary_batchsize, epochs=epochs, lr=lr, size=size, save=save, load_epoch=load_epoch, 
-                                                         lr_decay=lr_decay, alpha_decay=alpha_decay, alpha_limit=alpha_limit, patience=patience, filename=filename)
+                                                         lr_decay=lr_decay, alpha_decay=alpha_decay, r_lower_change=r_lower_change, alpha_limit=alpha_limit, 
+                                                         patience=patience, filename=filename)
         
         # Save model output dataframe
         df = pd.DataFrame()
@@ -109,6 +113,7 @@ def main():
         df['num_hidden_units'] = num_hidden_units
         df['lr'] = lr
         df['alpha_decay'] = alpha_decay
+        df['r_lower_change'] = r_lower_change
         df['batchsize'] = batchsize
         df['boundary_batchsize'] = boundary_batchsize
         df['alpha'] = alpha

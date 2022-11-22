@@ -1,2 +1,2 @@
-model_checkpoint_path: "pinn_newSampling_epoch_0"
-all_model_checkpoint_paths: "pinn_newSampling_epoch_0"
+model_checkpoint_path: "pinn_sherpa_200_trial_10_epoch_900"
+all_model_checkpoint_paths: "pinn_sherpa_200_trial_10_epoch_900"

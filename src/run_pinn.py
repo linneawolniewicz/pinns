@@ -15,8 +15,8 @@ CURRENT_PATH = os.getcwd()
 PINN_PATH = os.path.abspath(os.path.join(CURRENT_PATH, "src"))
 DATA_PATH = os.path.abspath(os.path.join(CURRENT_PATH, "data"))
 OUTPUTS_PATH = os.path.abspath(os.path.join(CURRENT_PATH, "outputs"))
-
 sys.path.insert(1, PINN_PATH)
+
 from pinn import PINN
 
 # Load data
@@ -29,7 +29,7 @@ with open(DATA_PATH + '/p.pkl', 'rb') as file:
 with open(DATA_PATH + '/T.pkl', 'rb') as file:
     T = pkl.load(file)
     
-with open(DATA_PATH + '/r_119au.pkl', 'rb') as file:
+with open(DATA_PATH + '/r.pkl', 'rb') as file:
     r = pkl.load(file)
     
 with open(DATA_PATH + '/P_predict.pkl', 'rb') as file:
@@ -42,22 +42,24 @@ f_bound = np.array([-34.54346331847909, 6.466899920699378], dtype='float32')
 size = len(f_boundary[:, 0])
 
 # Hyperparameters
-epochs = 1000
+epochs = 5000
+r_lower_change = 0.99995
 alpha = 1
-alpha_decay = 0.9945024823413915
+beta = 1e8
+alpha_decay = 0.995
 alpha_limit = 0
 lr_decay = 0.95
 patience = 10
 batchsize = 1032
 boundary_batchsize = 512
 activation = 'selu'
-save = True
+save = False
 load_epoch = -1
-filename = 'newSampling'
+filename = '10layers_10nodes_smallerRchange'
 n_samples = 20000
-lr = 7.931296428571565e-07
-num_layers = 6
-num_hidden_units = 162
+lr = 3e-3
+num_layers = 10
+num_hidden_units = 10
 
 # Create model
 inputs = tf.keras.Input((2))
@@ -68,9 +70,10 @@ outputs = tf.keras.layers.Dense(1, activation='linear')(x_)
 
 # Train the PINN
 pinn = PINN(inputs=inputs, outputs=outputs, lower_bound=lb, upper_bound=ub, p=p[:, 0], f_boundary=f_boundary[:, 0], f_bound=f_bound, size=size, n_samples=n_samples)
-pinn_loss, boundary_loss, predictions = pinn.fit(P_predict=P_predict, client=None, trial=None, alpha=alpha, batchsize=batchsize, 
+pinn_loss, boundary_loss, predictions = pinn.fit(P_predict=P_predict, client=None, trial=None, alpha=alpha, beta=beta, batchsize=batchsize, 
                                                  boundary_batchsize=boundary_batchsize, epochs=epochs, lr=lr, size=size, save=save, load_epoch=load_epoch, 
-                                                 lr_decay=lr_decay, alpha_decay=alpha_decay, alpha_limit=alpha_limit, patience=patience, filename=filename)
+                                                 lr_decay=lr_decay, alpha_decay=alpha_decay, r_lower_change=r_lower_change, alpha_limit=alpha_limit, 
+                                                 patience=patience, filename=filename)
 
 # Save PINN outputs
 with open(OUTPUTS_PATH + '/pinn_loss_' + filename + '.pkl', 'wb') as file:
