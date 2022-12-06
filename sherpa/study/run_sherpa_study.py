@@ -44,19 +44,23 @@ def main():
     # Get upper and lower bounds
     lb = np.log(np.array([p[0], r[0]], dtype='float32'))
     ub = np.log(np.array([p[-1], r[-1]], dtype='float32'))
-    f_bound = np.array([-34.54346331847909, 6.466899920699378], dtype='float32')
+    min_f_log_space = -34.54346331847909
+    max_f_log_space = 6.466899920699378
+    f_bound = np.array([min_f_log_space, max_f_log_space], dtype='float32')
     size = len(f_boundary[:, 0])
 
     # Sherpa
     parameters = [
-        sherpa.Continuous(name='alpha_decay', range=[0.99, 1]),
-        sherpa.Continuous(name='r_lower_change', range=[0.99, 1]),
-        sherpa.Continuous(name='lr', range=[3e-5, 3e-8]),
-        sherpa.Discrete(name='num_hidden_units', range=[10, 500]),
-        sherpa.Discrete(name='num_layers', range=[2, 10])
+        sherpa.Continuous(name='lr', range=[3e-4, 3e-8]),
+        sherpa.Discrete(name='num_hidden_units', range=[50, 1_000]),
+        sherpa.Choice(name='batchsize', range=[512, 1024, 2048, 4096]),
+        sherpa.Choice(name='sampling_method', range=['uniform', 'beta_3_1', 'beta_1_3']),
+        sherpa.Choice(name='lr_schedule', range=['decay', 'oscillate']),
+        sherpa.Choice(name='alpha_schedule', range=['static', 'grow', 'decay']),
+        sherpa.Choice(name='final_activation', range=['linear', 'sigmoid'])
     ]
     
-    n_run = 200
+    n_run = 1000
     study = sherpa.Study(
         parameters=parameters,
         algorithm=sherpa.algorithms.RandomSearch(max_num_trials=n_run),
@@ -64,19 +68,19 @@ def main():
     )
 
     # Hyperparameters
-    epochs = 100
-    alpha = 1
-    beta = 1e8
-    alpha_limit = 0
+    epochs = 50
+    beta = 1e13
     lr_decay = 0.95
-    patience = 10
-    batchsize = 1032
+    patience = 3
     boundary_batchsize = 512
     activation = 'selu'
+    r_lower = np.log(119*150e6).astype('float32')
+    num_samples = 20_000
     save = False
     load_epoch = -1
-    filename = ''
-    n_samples = 20000
+    num_layers = 2
+    should_r_lower_change = False
+    filename = '_alphaScheduleLrSchedule'
 
     # run Sherpa experiment
     dfs = []
@@ -86,25 +90,27 @@ def main():
         start = time.time()
         
         # Get hyperparameters
-        alpha_decay = trial.parameters['alpha_decay']
-        r_lower_change = trial.parameters['r_lower_change']
         lr = trial.parameters['lr']
-        num_layers = trial.parameters['num_layers']
         num_hidden_units = trial.parameters['num_hidden_units']
+        batchsize = trial.parameters['batchsize']
+        sampling_method = trial.parameters['sampling_method']
+        lr_schedule = trial.parameters['lr_schedule']
+        alpha_schedule = trial.parameters['alpha_schedule']
+        final_activation = trial.parameters['final_activation']
 
         # Create model
         inputs = tf.keras.Input((2))
         x_ = tf.keras.layers.Dense(num_hidden_units, activation=activation)(inputs)
         for _ in range(num_layers-1):
             x_ = tf.keras.layers.Dense(num_hidden_units, activation=activation)(x_)
-        outputs = tf.keras.layers.Dense(1, activation='linear')(x_)
+        outputs = tf.keras.layers.Dense(1, activation=final_activation)(x_)
                                   
         # Train the PINN
-        pinn = PINN(inputs=inputs, outputs=outputs, lower_bound=lb, upper_bound=ub, p=p[:, 0], f_boundary=f_boundary[:, 0], f_bound=f_bound, size=size, n_samples=n_samples)
-        pinn_loss, boundary_loss, predictions = pinn.fit(P_predict=P_predict, client=None, trial=None, alpha=alpha, beta=beta, batchsize=batchsize, 
+        pinn = PINN(inputs=inputs, outputs=outputs, lower_bound=lb, upper_bound=ub, p=p[:, 0], f_boundary=f_boundary[:, 0], f_bound=f_bound, size=size, num_samples=num_samples)
+        pinn_loss, boundary_loss, predictions = pinn.fit(P_predict=P_predict, client=None, trial=None, beta=beta, batchsize=batchsize, 
                                                          boundary_batchsize=boundary_batchsize, epochs=epochs, lr=lr, size=size, save=save, load_epoch=load_epoch, 
-                                                         lr_decay=lr_decay, alpha_decay=alpha_decay, r_lower_change=r_lower_change, alpha_limit=alpha_limit, 
-                                                         patience=patience, filename=filename)
+                                                         lr_schedule=lr_schedule, alpha_schedule=alpha_schedule, r_lower=r_lower, patience=patience, 
+                                                         filename=filename, sampling_method=sampling_method, should_r_lower_change=should_r_lower_change)
         
         # Save model output dataframe
         df = pd.DataFrame()
@@ -112,29 +118,29 @@ def main():
         df['num_layers'] = num_layers
         df['num_hidden_units'] = num_hidden_units
         df['lr'] = lr
-        df['alpha_decay'] = alpha_decay
-        df['r_lower_change'] = r_lower_change
+        df['alpha_schedule'] = alpha_schedule
+        df['r_lower'] = r_lower
         df['batchsize'] = batchsize
         df['boundary_batchsize'] = boundary_batchsize
-        df['alpha'] = alpha
-        df['lr_decay'] = lr_decay
-        df['alpha_limit'] = alpha_limit
+        df['lr_schedule'] = lr_schedule
         df['patience'] = patience
         df['epochs'] = epochs
         df['activation'] = activation
+        df['final_activation'] = final_activation
+        df['sampling_method'] = sampling_method
         df['final_boundary_loss'] = boundary_loss[-1]
         df['final_pinn_loss'] = pinn_loss[-1]
         dfs.append(df)
         
         # Every 5 trials save dataframe
-        pd.concat(dfs).to_csv(OUTPUTS_PATH + '/outputs/sherpa_' + str(n_run) + '.csv')
+        pd.concat(dfs).to_csv(OUTPUTS_PATH + '/outputs/sherpa_' + str(n_run) + filename + '.csv')
         
         # Pickle predictions and losses
-        with open(OUTPUTS_PATH + '/pickles/pinn_loss_sherpa_' + str(n_run) + '_trial_id_' + str(i) + '.pkl', 'wb') as file:
+        with open(OUTPUTS_PATH + '/pickles/pinn_loss_sherpa_' + str(n_run) + '_trial_id_' + str(i) + filename + '.pkl', 'wb') as file:
             pkl.dump(pinn_loss, file)
-        with open(OUTPUTS_PATH + '/pickles/boundary_loss_sherpa_' + str(n_run) + '_trial_id_' + str(i) + '.pkl', 'wb') as file:
+        with open(OUTPUTS_PATH + '/pickles/boundary_loss_sherpa_' + str(n_run) + '_trial_id_' + str(i) + filename + '.pkl', 'wb') as file:
             pkl.dump(boundary_loss, file)
-        with open(OUTPUTS_PATH + '/pickles/predictions_sherpa_' + str(n_run) + '_trial_id_' + str(i) + '.pkl', 'wb') as file:
+        with open(OUTPUTS_PATH + '/pickles/predictions_sherpa_' + str(n_run) + '_trial_id_' + str(i) + filename + '.pkl', 'wb') as file:
             pkl.dump(predictions, file)
         
         # Write progress.txt

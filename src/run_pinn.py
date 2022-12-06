@@ -38,42 +38,49 @@ with open(DATA_PATH + '/P_predict.pkl', 'rb') as file:
 # Get upper and lower bounds
 lb = np.log(np.array([p[0], r[0]], dtype='float32'))
 ub = np.log(np.array([p[-1], r[-1]], dtype='float32'))
-f_bound = np.array([-34.54346331847909, 6.466899920699378], dtype='float32')
+min_f_log_space = -34.54346331847909
+max_f_log_space = 6.466899920699378
+f_bound = np.array([min_f_log_space, max_f_log_space], dtype='float32')
 size = len(f_boundary[:, 0])
 
+####################################### 
+# Adjust these to change training
+
 # Hyperparameters
-epochs = 5000
-r_lower_change = 0.99995
-alpha = 1
-beta = 1e8
-alpha_decay = 0.995
-alpha_limit = 0
-lr_decay = 0.95
-patience = 10
-batchsize = 1032
+epochs = 500
+r_lower = np.log(119*150e6).astype('float32')
+beta = 1e13
+alpha_schedule = ''
+lr_schedule = 'decay'
+patience = 3
+batchsize = 2048
 boundary_batchsize = 512
 activation = 'selu'
 save = False
 load_epoch = -1
-filename = '10layers_10nodes_smallerRchange'
-n_samples = 20000
-lr = 3e-3
-num_layers = 10
-num_hidden_units = 10
+num_samples = 20_000
+lr = 0.00023639767679554095
+num_layers = 2
+num_hidden_units = 71
+sampling_method = 'uniform'
+final_activation = 'linear'
+should_r_lower_change = False
+filename = 'sherpa_500_trial_297_rlower_119au'
+########################################
 
 # Create model
 inputs = tf.keras.Input((2))
 x_ = tf.keras.layers.Dense(num_hidden_units, activation=activation)(inputs)
 for _ in range(num_layers-1):
     x_ = tf.keras.layers.Dense(num_hidden_units, activation=activation)(x_)
-outputs = tf.keras.layers.Dense(1, activation='linear')(x_)
+outputs = tf.keras.layers.Dense(1, activation=final_activation)(x_)
 
 # Train the PINN
-pinn = PINN(inputs=inputs, outputs=outputs, lower_bound=lb, upper_bound=ub, p=p[:, 0], f_boundary=f_boundary[:, 0], f_bound=f_bound, size=size, n_samples=n_samples)
-pinn_loss, boundary_loss, predictions = pinn.fit(P_predict=P_predict, client=None, trial=None, alpha=alpha, beta=beta, batchsize=batchsize, 
+pinn = PINN(inputs=inputs, outputs=outputs, lower_bound=lb, upper_bound=ub, p=p[:, 0], f_boundary=f_boundary[:, 0], f_bound=f_bound, size=size, num_samples=num_samples)
+pinn_loss, boundary_loss, predictions = pinn.fit(P_predict=P_predict, client=None, trial=None, beta=beta, batchsize=batchsize, 
                                                  boundary_batchsize=boundary_batchsize, epochs=epochs, lr=lr, size=size, save=save, load_epoch=load_epoch, 
-                                                 lr_decay=lr_decay, alpha_decay=alpha_decay, r_lower_change=r_lower_change, alpha_limit=alpha_limit, 
-                                                 patience=patience, filename=filename)
+                                                 lr_schedule=lr_schedule, alpha_schedule=alpha_schedule, r_lower=r_lower, patience=patience, 
+                                                 filename=filename, sampling_method=sampling_method, should_r_lower_change=should_r_lower_change)
 
 # Save PINN outputs
 with open(OUTPUTS_PATH + '/pinn_loss_' + filename + '.pkl', 'wb') as file:

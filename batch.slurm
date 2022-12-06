@@ -5,7 +5,7 @@
 ##SBATCH --J=pinns
 #SBATCH --tasks-per-node=2
 #SBATCH --cpus-per-task=2
-#SBATCH --time 3-00:00:00
+#SBATCH --time 14-00:00:00
 #SBATCH --mem=24gb
 #SBATCH --mail-user=linneamw@hawaii.edu
 #SBATCH --mail-type=BEGIN
@@ -19,5 +19,4 @@ export PATH="/home/linneamw/sadow_lts/personal/linneamw/anaconda3/bin:$PATH"
 source /home/linneamw/profiles/auto.profile
 conda activate pinns
 module load --ignore-cache lib/slurm-drmaa/1.1.3
-## python src/run_pinn.py
-python sherpa/study/run_sherpa_study.py
+python src/run_pinn.py

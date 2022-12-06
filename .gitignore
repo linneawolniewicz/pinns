@@ -3,7 +3,6 @@ michael_implementation
 *.out
 __pycache__
 .git
-*.pkl
 sherpa/parallel/output/diagnostic.data
 sherpa/parallel/output/jobs
 sherpa/parallel/output/journal
@@ -13,5 +12,7 @@ sherpa/parallel/output/*
 *.lock
 *.bson
 WiredTiger*
-outputs/ckpts/*
+outputs/*
+environment.yml
+sherpa/study/pickles/*
 sherpa/study/outputs/*

@@ -17,13 +17,13 @@ This PINN in particular solves the force-field equation for solar modulation of 
 domain bounds and the input space. 
 '''
 class PINN(tf.keras.Model):
-    def __init__(self, inputs, outputs, lower_bound, upper_bound, p, f_boundary, f_bound, size, n_samples=20000):
+    def __init__(self, inputs, outputs, lower_bound, upper_bound, p, f_boundary, f_bound, size, num_samples=20_000):
         super(PINN, self).__init__(inputs=inputs, outputs=outputs)
         self.lower_bound = lower_bound # In log space
         self.upper_bound = upper_bound # In log space
         self.p = p # In real space
-        self.f_boundary = f_boundary # In log and scaled space
-        self.n_samples = n_samples
+        self.f_boundary = f_boundary # In scaled space (0 to 1)
+        self.num_samples = num_samples
         self.size = size
         self.f_bound = f_bound # In log space
         
@@ -62,14 +62,14 @@ class PINN(tf.keras.Model):
                 t1.watch(r_boundary)
                 
                 # PINN loss data
-                p_scaled = (tfm.log(p) - self.lower_bound[0])/tfm.abs(self.upper_bound[0] - self.lower_bound[0])
-                r_scaled = (tfm.log(r) - self.lower_bound[1])/tfm.abs(self.upper_bound[1] - self.lower_bound[1])
+                p_scaled = self.scale(p, self.upper_bound[0], self.lower_bound[0], should_take_log=True)
+                r_scaled = self.scale(r, self.upper_bound[1], self.lower_bound[1], should_take_log=True)
                 P = tf.concat((p_scaled, r_scaled), axis=1)
                 g = self.tf_call(P)
 
                 # Boundary loss data
-                p_boundary_scaled = (tfm.log(p_boundary) - self.lower_bound[0])/tfm.abs(self.upper_bound[0] - self.lower_bound[0])
-                r_boundary_scaled = (tfm.log(r_boundary) - self.lower_bound[1])/tfm.abs(self.upper_bound[1] - self.lower_bound[1])
+                p_boundary_scaled = self.scale(p_boundary, self.upper_bound[0], self.lower_bound[0], should_take_log=True)
+                r_boundary_scaled = self.scale(r_boundary, self.upper_bound[1], self.lower_bound[1], should_take_log=True)
                 P_boundary = tf.concat((p_boundary_scaled, r_boundary_scaled), axis=1)
                 g_pred_boundary = self.tf_call(P_boundary)
                 
@@ -77,11 +77,11 @@ class PINN(tf.keras.Model):
                 boundary_loss = tfm.reduce_mean(tfm.square(g_pred_boundary - f_boundary))
 
             # Calculate first-order gradients
-            g_p = t1.gradient(g, p)
-            g_r = t1.gradient(g, r)
+            dg_dp = t1.gradient(g, p)
+            dg_dr = t1.gradient(g, r)
             
-            g_p_boundary = t1.gradient(g_pred_boundary, p_boundary)
-            g_r_boundary = t1.gradient(g_pred_boundary, r_boundary)
+            dg_dp_boundary = t1.gradient(g_pred_boundary, p_boundary)
+            dg_dr_boundary = t1.gradient(g_pred_boundary, r_boundary)
             
             # Calculate f (real space) from g (scaled sapce) and get df/dg
             with tf.GradientTape(persistent=True) as t3: 
@@ -93,18 +93,18 @@ class PINN(tf.keras.Model):
                 f = tfm.exp(g*diff + self.f_bound[0])
                 f_pred_boundary = tfm.exp(g_pred_boundary*diff + self.f_bound[0])
 
-                f_g = t3.gradient(f, g)
-                f_g_boundary = t3.gradient(f_pred_boundary, g_pred_boundary)
+                df_dg = t3.gradient(f, g)
+                df_dg_boundary = t3.gradient(f_pred_boundary, g_pred_boundary)
             
-            # Use df/dg in the chain rule to calculate df/dp and df/dr
-            f_p = f_g*g_p
-            f_r = f_g*g_r
+            # Use chain rule to calculate df/dp and df/dr
+            df_dp = df_dg*dg_dp
+            df_dr = df_dg*dg_dr
             
-            f_p_boundary = f_g_boundary*g_p_boundary
-            f_r_boundary = f_g_boundary*g_r_boundary
+            df_dp_boundary = df_dg_boundary*dg_dp_boundary
+            df_dr_boundary = df_dg_boundary*dg_dr_boundary
             
             # Calculate PINN loss and total loss
-            pinn_loss = beta*self.pinn_loss(p, r, f_p, f_r) + beta*self.pinn_loss(p_boundary, r_boundary, f_p_boundary, f_r_boundary)
+            pinn_loss = beta*(self.pinn_loss(p, r, df_dp, df_dr) + self.pinn_loss(p_boundary, r_boundary, df_dp_boundary, df_dr_boundary))
             
             total_loss = (1-alpha)*pinn_loss + alpha*boundary_loss
 
@@ -123,8 +123,6 @@ class PINN(tf.keras.Model):
         
         client, trial: Sherpa client and trial
         
-        alpha: weight on boundary_loss, 1-alpha weight on pinn_loss
-        
         beta: weight on pinn_loss to scale it to the same order of magnitude as boundary_loss
         
         batchsize: batchsize for (p, r) in train step
@@ -142,39 +140,42 @@ class PINN(tf.keras.Model):
         load_epoch: If -1, a saved model will not be loaded. Otherwise, the model will be 
         loaded from the provided epoch
         
-        lr_decay: If -1, learning rate will not be decayed. Otherwise, lr = lr_decay*lr if loss hasn't 
-        decreased
+        lr_schedule: Determines the schedule lr will be on. Options include 'decay' and 'oscillate', else lr will remain constant
         
-        alpha_decay: If -1, alpha will not be changed. Otherwise, alpha = alpha_decay*alpha if loss 
-        hasn't decreased
+        alpha_schedule: Determines the schedule alpha will be on. Choices include 'decay', 'grow', and 'oscillate'
         
-        r_lower_change: If -1, r_lower will not be changed. Otherwise r_lower will decrease from the self.upper_bound[1] to 
-        self.lower_bound[1].
+        r_lower: Changes the r sampling. R will be sampled between r_lower and self.upper_bound[1] according to
+        the sampling_method. Default r_lower is self.lower_bound[1], or np.log(0.4 * 150e6)
         
-        alpha_limit = Minimum alpha value to decay to
-        
-        patience: Number of epochs to check whether loss has decreased before updating lr or alpha
+        patience: Number of epochs to check whether loss has decreased before updating lr
         
         filename: Name for the checkpoint file
+        
+        sampling_method = Method for sampling r. Choices include 'beta_3_1' or 'beta_1_3', otherwise will sample uniformlly in real space
+        
+        should_r_lower_change = Toggle for whether to decrease r_lower from self.upper_bound[1] to self.lower_bound[1] or not.
     
     Outputs: Losses for each equation (Total, PDE, Boundary Value), and predictions for each epoch.
     '''
-    def fit(self, P_predict, client=None, trial=None, alpha=0.5, beta=1, batchsize=64, boundary_batchsize=16, epochs=20, lr=3e-3, size=256, 
-            save=False, load_epoch=-1, lr_decay=-1, alpha_decay=-1, r_lower_change=-1, alpha_limit = 0, patience=3, filename=''):
+    def fit(self, P_predict, client=None, trial=None, beta=1, batchsize=64, boundary_batchsize=16, epochs=20, lr=3e-3, 
+            size=256, save=False, load_epoch=-1, lr_schedule='', alpha_schedule='', r_lower=17.909855, patience=3, filename='', 
+            sampling_method='uniform', should_r_lower_change=False):
         
         # If load == True, load the weights
         if load_epoch != -1:
             name = './outputs/ckpts/pinn_' + filename + '_epoch_' + str(load_epoch)
             self.load_weights(name)
         
+        # Initialize alpha based on alpha_schedule
+        if (alpha_schedule == 'decay'): alpha = 1.0
+        elif (alpha_schedule == 'grow'): alpha = 0.001
+        else: alpha = 0.5
+        
         # Initialize
-        steps_per_epoch = np.ceil(self.n_samples / batchsize).astype(int)
+        steps_per_epoch = np.ceil(self.num_samples / batchsize).astype(int)
         total_pinn_loss = np.zeros((epochs,))
         total_boundary_loss = np.zeros((epochs,))
         predictions = np.zeros((size**2, 1, epochs))
-        
-        # Lower r boundary
-        r_lower = self.upper_bound[1]
         
         # For each epoch, sample new values in the PINN and boundary areas and pass them to train_step
         for epoch in range(epochs):
@@ -188,13 +189,16 @@ class PINN(tf.keras.Model):
             
             # For each step, sample data and pass to train_step
             for step in range(steps_per_epoch):
-                # Sample p and r
-                beta_dist = tfd.Beta(3, 1)
+                # Sample p according to a uniform distribution in log space
                 uniform_dist = tfd.Uniform(0, 1)
-
                 p = (uniform_dist.sample((batchsize, 1))*tfm.abs(self.upper_bound[0] - self.lower_bound[0])) + self.lower_bound[0]
                 p = tfm.exp(p)
-                r = (beta_dist.sample((batchsize, 1))*tfm.abs(tfm.exp(self.upper_bound[1]) - tfm.exp(r_lower))) + tfm.exp(r_lower)
+                
+                # Sample r according to sampling_method variable
+                if(sampling_method=='beta_1_3'): dist = tfd.Beta(1, 3)
+                elif(sampling_method=='beta_3_1'): dist = tfd.Beta(3, 1)
+                else: dist = tfd.Uniform(0, 1)
+                r = (dist.sample((batchsize, 1))*tfm.abs(tfm.exp(self.upper_bound[1]) - tfm.exp(r_lower))) + tfm.exp(r_lower)
                 
                 # Randomly sample boundary_batchsize from p_boundary and f_boundary
                 p_idx = np.expand_dims(np.random.choice(self.f_boundary.shape[0], boundary_batchsize, replace=False), axis=1)
@@ -214,35 +218,38 @@ class PINN(tf.keras.Model):
             # Sum losses
             total_pinn_loss[epoch] = np.sum(pinn_loss)
             total_boundary_loss[epoch] = np.sum(boundary_loss)
-            print(f'Epoch {epoch}. Current alpha: {alpha:.6f}, lr: {lr:.10f}, r_lower: {(np.exp(r_lower[0])/150e6):.1f}. ' + 
+            print(f'Epoch {epoch}. Current alpha: {alpha:.6f}, lr: {lr:.10f}, ' + 
                   f'Training losses: pinn: {total_pinn_loss[epoch]:.10f}, boundary: {total_boundary_loss[epoch]:.10f}, ' +
                   f'weighted total: {((alpha*total_boundary_loss[epoch])+((1-alpha)*total_pinn_loss[epoch])):.10f}')
             
             predictions[:, :, epoch] = self.predict(P_predict, batchsize)
             
-            # Decay lr if loss hasn't decreased since current epoch - patience
-            hasntDecreased = False
+            # Adjust alpha based on the schedule, only every 10 epochs
+            if (epoch%10 == 0):
+                if alpha_schedule=='decay': alpha = alpha*0.995
+                elif (alpha_schedule=='grow') & (alpha <= 1): alpha = alpha*1.015
+
+            # Check if loss has decreased
+            hasnt_decreased = False
             if (epoch > patience):
                 if (total_pinn_loss[epoch] + total_boundary_loss[epoch]) > (total_pinn_loss[epoch-patience] + total_boundary_loss[epoch-patience]):
-                    hasntDecreased = True
+                    hasnt_decreased = True
                         
-            if (lr_decay != -1) & hasntDecreased:
-                lr = lr_decay*lr
-
-            # Decrease alpha each epoch
-            if (alpha_decay != -1) & (alpha >= alpha_limit) & (epoch%10 == 0):
-                alpha = alpha_decay*alpha
+            # If loss hasn't decreased, adjust lr based on the assigned schedule
+            if ((lr_schedule == 'decay') & hasnt_decreased): lr = lr*0.95
+            elif ((lr_schedule == 'oscillate') & hasnt_decreased): lr = self.oscillate_lr(lr)
+                
             
-            # Decrease lower r boundary from 120au to 0.4au every 10 epochs
-            if (r_lower_change != -1) & (r_lower >= self.lower_bound[1]) & (epoch%10 == 0): #23.6) & (epoch%10 == 0):
-                r_lower = r_lower_change*r_lower
+            # Decrease lower r if told to
+            if should_r_lower_change & (epoch%10==0): r_lower = r_lower*0.95
 
-            # If the epoch is a multiple of 100, save to a checkpoint
-            if (epoch%100 == 0) & (save == True):
+            # Save the model to a checkpoint
+            should_save = (epoch%100 == 0) & (save == True)
+            if should_save:
                 name = './outputs/ckpts/pinn_' + filename + '_epoch_' + str(epoch)
                 self.save_weights(name, overwrite=True, save_format=None, options=None)
                 
-            # Send metrics
+            # Send metrics if running Sherpa optimization
             if client:
                 if (np.isnan(total_pinn_loss[epoch]) and np.isnan(total_boundary_loss[epoch])):
                     obj = np.inf
@@ -281,18 +288,18 @@ class PINN(tf.keras.Model):
     
     # pinn_loss calculates the PINN loss by calculating the MAE of the pinn function
     @tf.function
-    def pinn_loss(self, p, r, f_p, f_r):
+    def pinn_loss(self, p, r, df_dp, df_dr):
         V = 400 # 400 km/s
-        m = 0.938 # GeV/c^2
+        M = 0.938 # GeV/c^2
         k_0 = 1e11 # km^2/s
         k_1 = k_0 * tfm.divide(r, 150e6) # km^2/s
         k_2 = p # unitless, k_2 = p/p0 and p0 = 1 GeV/c
         R = p # GV
-        beta = tfm.divide(p, tfm.sqrt(tfm.square(p) + tfm.square(m))) 
+        beta = tfm.divide(p, tfm.sqrt(tfm.square(p) + tfm.square(M))) 
         k = beta*k_1*k_2
         
         # Calculate physics loss
-        l_f = tfm.reduce_mean(tfm.square(f_r + (tfm.divide(R*V, 3*k) * f_p)))
+        l_f = tfm.reduce_mean(tfm.square(df_dr + (tfm.divide(R*V, 3*k) * df_dp)))
         
         return l_f
     
@@ -300,3 +307,28 @@ class PINN(tf.keras.Model):
     @tf.function
     def tf_call(self, inputs): 
         return self.call(inputs, training=True)
+    
+    # Scales input data and returns scaled version
+    def scale(self, data, upper_bound, lower_bound, should_take_log=True):
+        if should_take_log: scaled_data = (tfm.log(data) - lower_bound)/tfm.abs(upper_bound - lower_bound)   
+        else: scaled_data = (data - lower_bound)/tfm.abs(upper_bound - lower_bound)
+            
+        return scaled_data
+    
+    ################################## Still being implemented
+    # Implements an oscillating lr according to the triangular CLR schedule
+    def oscillate_lr(lr): #stepsize, min_lr=3e-4, max_lr=3e-3):
+        return lr
+#         # Scaler: we can adapt this if we do not want the triangular CLR
+#         scaler = lambda x: 1.
+
+#         # Lambda function to calculate the LR
+#         lr_lambda = lambda it: min_lr + (max_lr - min_lr) * relative(it, stepsize)
+
+#         # Additional function to see where on the cycle we are
+#         def relative(it, stepsize):
+#             cycle = math.floor(1 + it / (2 * stepsize))
+#             x = abs(it / stepsize - 2 * cycle + 1)
+#             return max(0, (1 - x)) * scaler(cycle)
+
+#         return lr_lambda
