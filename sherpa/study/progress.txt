@@ -44,3 +44,5 @@ Trial id: 7, elapsed time: 35863.167
 Trial id: 8, elapsed time: 464.815
 ===============================================
 Trial id: 170, elapsed time: 329.064
+===============================================
+Trial id: 171, elapsed time: 369.667
