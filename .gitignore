@@ -13,6 +13,5 @@ sherpa/parallel/output/*
 *.bson
 WiredTiger*
 outputs/*
-environment.yml
 sherpa/study/pickles/*
 sherpa/study/outputs/*
