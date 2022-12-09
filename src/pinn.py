@@ -176,7 +176,7 @@ class PINN(tf.keras.Model):
         # Initialize variables for oscillating lr schedule
         just_decreased = False
         max_lr = lr
-        min_lr = max_lr/100
+        min_lr = max_lr/1000
         stepsize = (max_lr-min_lr)/(epochs/(num_cycles/2))
         
         # Initialize

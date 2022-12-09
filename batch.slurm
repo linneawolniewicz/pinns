@@ -19,8 +19,4 @@ export PATH="/home/linneamw/sadow_lts/personal/linneamw/anaconda3/bin:$PATH"
 source /home/linneamw/profiles/auto.profile
 conda activate pinns
 module load --ignore-cache lib/slurm-drmaa/1.1.3
-<<<<<<< Updated upstream
-python data/create_data.py
-=======
 python sherpa/study/run_sherpa_study.py
->>>>>>> Stashed changes

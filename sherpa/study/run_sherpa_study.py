@@ -51,8 +51,7 @@ def main():
 
     # Sherpa
     parameters = [
-        sherpa.Continuous(name='lr', range=[3e-3, 3e-8]),
-        sherpa.Discrete(name='num_hidden_units', range=[100, 5_000]),
+        sherpa.Discrete(name='num_hidden_units', range=[100, 1_000]),
         sherpa.Choice(name='batchsize', range=[512, 1024, 2048, 4096]),
         sherpa.Choice(name='boundary_batchsize', range=[512, 1024, 2048]),
         sherpa.Choice(name='num_layers', range=[2, 3]),
@@ -62,7 +61,7 @@ def main():
         sherpa.Choice(name='final_activation', range=['linear', 'sigmoid'])
     ]
     
-    n_run = 1000
+    n_run = 750
     study = sherpa.Study(
         parameters=parameters,
         algorithm=sherpa.algorithms.RandomSearch(max_num_trials=n_run),
@@ -70,23 +69,19 @@ def main():
     )
 
     # Hyperparameters
+    lr = 3e-3
     epochs = 100
     beta = 1e13
     lr_decay = 0.95
-<<<<<<< Updated upstream
-    patience = 30
-=======
-    patience = 3
-    num_cycles = 5
->>>>>>> Stashed changes
-    boundary_batchsize = 512
+    patience = 20
+    num_cycles = 3
     activation = 'selu'
     r_lower = np.log(0.4*150e6).astype('float32')
     num_samples = 20_000
     save = False
     load_epoch = -1
     should_r_lower_change = False
-    filename = '_schedulesMorePatienceFullRbatchsize'
+    filename = '_lrSchedulesMorePatienceFullR'
 
     # run Sherpa experiment
     dfs = []
@@ -96,9 +91,9 @@ def main():
         start = time.time()
         
         # Get hyperparameters
-        lr = trial.parameters['lr']
         num_hidden_units = trial.parameters['num_hidden_units']
         batchsize = trial.parameters['batchsize']
+        boundary_batchsize = trial.parameters['boundary_batchsize']
         sampling_method = trial.parameters['sampling_method']
         lr_schedule = trial.parameters['lr_schedule']
         alpha_schedule = trial.parameters['alpha_schedule']
