@@ -26,19 +26,19 @@ from pinn import PINN
 
 def main():
     # Load data
-    with open(DATA_PATH + '/f_boundary.pkl', 'rb') as file:
+    with open(DATA_PATH + '/f_boundary_2048.pkl', 'rb') as file:
         f_boundary = pkl.load(file)
 
-    with open(DATA_PATH + '/p.pkl', 'rb') as file:
+    with open(DATA_PATH + '/p_2048.pkl', 'rb') as file:
         p = pkl.load(file)
 
-    with open(DATA_PATH + '/T.pkl', 'rb') as file:
+    with open(DATA_PATH + '/T_2048.pkl', 'rb') as file:
         T = pkl.load(file)
 
-    with open(DATA_PATH + '/r.pkl', 'rb') as file:
+    with open(DATA_PATH + '/r_2048.pkl', 'rb') as file:
         r = pkl.load(file)
 
-    with open(DATA_PATH + '/P_predict.pkl', 'rb') as file:
+    with open(DATA_PATH + '/P_predict_2048.pkl', 'rb') as file:
         P_predict = pkl.load(file)
 
     # Get upper and lower bounds
@@ -51,9 +51,11 @@ def main():
 
     # Sherpa
     parameters = [
-        sherpa.Continuous(name='lr', range=[3e-4, 3e-8]),
-        sherpa.Discrete(name='num_hidden_units', range=[50, 1_000]),
+        sherpa.Continuous(name='lr', range=[3e-3, 3e-8]),
+        sherpa.Discrete(name='num_hidden_units', range=[100, 5_000]),
         sherpa.Choice(name='batchsize', range=[512, 1024, 2048, 4096]),
+        sherpa.Choice(name='boundary_batchsize', range=[512, 1024, 2048]),
+        sherpa.Choice(name='num_layers', range=[2, 3]),
         sherpa.Choice(name='sampling_method', range=['uniform', 'beta_3_1', 'beta_1_3']),
         sherpa.Choice(name='lr_schedule', range=['decay', 'oscillate']),
         sherpa.Choice(name='alpha_schedule', range=['static', 'grow', 'decay']),
@@ -68,19 +70,23 @@ def main():
     )
 
     # Hyperparameters
-    epochs = 50
+    epochs = 100
     beta = 1e13
     lr_decay = 0.95
+<<<<<<< Updated upstream
+    patience = 30
+=======
     patience = 3
+    num_cycles = 5
+>>>>>>> Stashed changes
     boundary_batchsize = 512
     activation = 'selu'
-    r_lower = np.log(119*150e6).astype('float32')
+    r_lower = np.log(0.4*150e6).astype('float32')
     num_samples = 20_000
     save = False
     load_epoch = -1
-    num_layers = 2
     should_r_lower_change = False
-    filename = '_alphaScheduleLrSchedule'
+    filename = '_schedulesMorePatienceFullRbatchsize'
 
     # run Sherpa experiment
     dfs = []
@@ -97,6 +103,7 @@ def main():
         lr_schedule = trial.parameters['lr_schedule']
         alpha_schedule = trial.parameters['alpha_schedule']
         final_activation = trial.parameters['final_activation']
+        num_layers = trial.parameters['num_layers']
 
         # Create model
         inputs = tf.keras.Input((2))
@@ -109,7 +116,7 @@ def main():
         pinn = PINN(inputs=inputs, outputs=outputs, lower_bound=lb, upper_bound=ub, p=p[:, 0], f_boundary=f_boundary[:, 0], f_bound=f_bound, size=size, num_samples=num_samples)
         pinn_loss, boundary_loss, predictions = pinn.fit(P_predict=P_predict, client=None, trial=None, beta=beta, batchsize=batchsize, 
                                                          boundary_batchsize=boundary_batchsize, epochs=epochs, lr=lr, size=size, save=save, load_epoch=load_epoch, 
-                                                         lr_schedule=lr_schedule, alpha_schedule=alpha_schedule, r_lower=r_lower, patience=patience, 
+                                                         lr_schedule=lr_schedule, alpha_schedule=alpha_schedule, r_lower=r_lower, patience=patience, num_cycles=num_cycles,
                                                          filename=filename, sampling_method=sampling_method, should_r_lower_change=should_r_lower_change)
         
         # Save model output dataframe
@@ -124,6 +131,7 @@ def main():
         df['boundary_batchsize'] = boundary_batchsize
         df['lr_schedule'] = lr_schedule
         df['patience'] = patience
+        df['num_cycles'] = num_cycles
         df['epochs'] = epochs
         df['activation'] = activation
         df['final_activation'] = final_activation
