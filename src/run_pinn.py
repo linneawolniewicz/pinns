@@ -53,6 +53,7 @@ beta = 1e13
 alpha_schedule = ''
 lr_schedule = 'decay'
 patience = 3
+num_cycles = 10
 batchsize = 2048
 boundary_batchsize = 512
 activation = 'selu'
@@ -79,7 +80,7 @@ outputs = tf.keras.layers.Dense(1, activation=final_activation)(x_)
 pinn = PINN(inputs=inputs, outputs=outputs, lower_bound=lb, upper_bound=ub, p=p[:, 0], f_boundary=f_boundary[:, 0], f_bound=f_bound, size=size, num_samples=num_samples)
 pinn_loss, boundary_loss, predictions = pinn.fit(P_predict=P_predict, client=None, trial=None, beta=beta, batchsize=batchsize, 
                                                  boundary_batchsize=boundary_batchsize, epochs=epochs, lr=lr, size=size, save=save, load_epoch=load_epoch, 
-                                                 lr_schedule=lr_schedule, alpha_schedule=alpha_schedule, r_lower=r_lower, patience=patience, 
+                                                 lr_schedule=lr_schedule, alpha_schedule=alpha_schedule, r_lower=r_lower, patience=patience, num_cycles=num_cycles, 
                                                  filename=filename, sampling_method=sampling_method, should_r_lower_change=should_r_lower_change)
 
 # Save PINN outputs

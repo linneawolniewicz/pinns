@@ -73,7 +73,12 @@ def main():
     epochs = 100
     beta = 1e13
     lr_decay = 0.95
+<<<<<<< Updated upstream
     patience = 30
+=======
+    patience = 3
+    num_cycles = 5
+>>>>>>> Stashed changes
     boundary_batchsize = 512
     activation = 'selu'
     r_lower = np.log(0.4*150e6).astype('float32')
@@ -111,7 +116,7 @@ def main():
         pinn = PINN(inputs=inputs, outputs=outputs, lower_bound=lb, upper_bound=ub, p=p[:, 0], f_boundary=f_boundary[:, 0], f_bound=f_bound, size=size, num_samples=num_samples)
         pinn_loss, boundary_loss, predictions = pinn.fit(P_predict=P_predict, client=None, trial=None, beta=beta, batchsize=batchsize, 
                                                          boundary_batchsize=boundary_batchsize, epochs=epochs, lr=lr, size=size, save=save, load_epoch=load_epoch, 
-                                                         lr_schedule=lr_schedule, alpha_schedule=alpha_schedule, r_lower=r_lower, patience=patience, 
+                                                         lr_schedule=lr_schedule, alpha_schedule=alpha_schedule, r_lower=r_lower, patience=patience, num_cycles=num_cycles,
                                                          filename=filename, sampling_method=sampling_method, should_r_lower_change=should_r_lower_change)
         
         # Save model output dataframe
@@ -126,6 +131,7 @@ def main():
         df['boundary_batchsize'] = boundary_batchsize
         df['lr_schedule'] = lr_schedule
         df['patience'] = patience
+        df['num_cycles'] = num_cycles
         df['epochs'] = epochs
         df['activation'] = activation
         df['final_activation'] = final_activation

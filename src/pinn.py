@@ -147,7 +147,9 @@ class PINN(tf.keras.Model):
         r_lower: Changes the r sampling. R will be sampled between r_lower and self.upper_bound[1] according to
         the sampling_method. Default r_lower is self.lower_bound[1], or np.log(0.4 * 150e6)
         
-        patience: Number of epochs to check whether loss has decreased before updating lr
+        patience: Number of epochs to check whether loss has decreased before decaying lr, if lr_schedule='decay'
+        
+        num_cycles = Number of cycles to oscillate lr for, if lr_schedule='oscillate'
         
         filename: Name for the checkpoint file
         
@@ -158,8 +160,8 @@ class PINN(tf.keras.Model):
     Outputs: Losses for each equation (Total, PDE, Boundary Value), and predictions for each epoch.
     '''
     def fit(self, P_predict, client=None, trial=None, beta=1, batchsize=64, boundary_batchsize=16, epochs=20, lr=3e-3, 
-            size=256, save=False, load_epoch=-1, lr_schedule='', alpha_schedule='', r_lower=17.909855, patience=3, filename='', 
-            sampling_method='uniform', should_r_lower_change=False):
+            size=256, save=False, load_epoch=-1, lr_schedule='', alpha_schedule='', r_lower=17.909855, patience=3, num_cycles=10,
+            filename='', sampling_method='uniform', should_r_lower_change=False):
         
         # If load == True, load the weights
         if load_epoch != -1:
@@ -170,6 +172,12 @@ class PINN(tf.keras.Model):
         if (alpha_schedule == 'decay'): alpha = 1.0
         elif (alpha_schedule == 'grow'): alpha = 0.001
         else: alpha = 0.5
+        
+        # Initialize variables for oscillating lr schedule
+        just_decreased = False
+        max_lr = lr
+        min_lr = max_lr/100
+        stepsize = (max_lr-min_lr)/(epochs/(num_cycles/2))
         
         # Initialize
         steps_per_epoch = np.ceil(self.num_samples / batchsize).astype(int)
@@ -198,6 +206,7 @@ class PINN(tf.keras.Model):
                 if(sampling_method=='beta_1_3'): dist = tfd.Beta(1, 3)
                 elif(sampling_method=='beta_3_1'): dist = tfd.Beta(3, 1)
                 else: dist = tfd.Uniform(0, 1)
+                
                 r = (dist.sample((batchsize, 1))*tfm.abs(tfm.exp(self.upper_bound[1]) - tfm.exp(r_lower))) + tfm.exp(r_lower)
                 
                 # Randomly sample boundary_batchsize from p_boundary and f_boundary
@@ -237,7 +246,8 @@ class PINN(tf.keras.Model):
                         
             # If loss hasn't decreased, adjust lr based on the assigned schedule
             if ((lr_schedule == 'decay') & hasnt_decreased): lr = lr*0.95
-            elif ((lr_schedule == 'oscillate') & hasnt_decreased): lr = self.oscillate_lr(lr)
+            elif (lr_schedule == 'oscillate'): 
+                lr, just_decreased = self.oscillate_lr(just_decreased, lr, min_lr, max_lr, stepsize)
                 
             
             # Decrease lower r if told to
@@ -315,20 +325,32 @@ class PINN(tf.keras.Model):
             
         return scaled_data
     
-    ################################## Still being implemented
-    # Implements an oscillating lr according to the triangular CLR schedule
-    def oscillate_lr(lr): #stepsize, min_lr=3e-4, max_lr=3e-3):
-        return lr
-#         # Scaler: we can adapt this if we do not want the triangular CLR
-#         scaler = lambda x: 1.
+    f'''
+    Description: Implements an oscillating lr according to the triangular CLR schedule: decrease lr linearly to min_lr, then increase linearly to max_lr, and repeat
+    
+    Inputs: 
+        just_decreased: Boolean, True if lr decreased last epoch and False if not
+        
+        current_lt: float, Current learning rate
+        
+        min_lr: float, minimum learning rate to decrease to. In literature defined as 1/R smaller than max_lr
+        
+        max_lr: float, maximum learning rate to increase to
+        
+        stepsize: float, value to increase/decrease lr by
+        
+    Outputs: 
+        just_decreased and new lr
+    '''
+    def oscillate_lr(self, just_decreased, lr, min_lr, max_lr, stepsize):
+        decrease_lr = (just_decreased and (lr - stepsize >= min_lr)) or ((not just_decreased) and (lr + stepsize > max_lr))
+        increase_lr = ((not just_decreased) and (lr + stepsize <= max_lr)) or (just_decreased and (lr - stepsize < min_lr))
 
-#         # Lambda function to calculate the LR
-#         lr_lambda = lambda it: min_lr + (max_lr - min_lr) * relative(it, stepsize)
+        if decrease_lr: 
+            lr = lr - stepsize
+            just_decreased = True
+        elif increase_lr:
+            lr = lr + stepsize
+            just_decreased = False
 
-#         # Additional function to see where on the cycle we are
-#         def relative(it, stepsize):
-#             cycle = math.floor(1 + it / (2 * stepsize))
-#             x = abs(it / stepsize - 2 * cycle + 1)
-#             return max(0, (1 - x)) * scaler(cycle)
-
-#         return lr_lambda
+        return lr, just_decreased
