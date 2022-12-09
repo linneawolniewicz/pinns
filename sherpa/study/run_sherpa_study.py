@@ -159,7 +159,7 @@ def main():
             f.write(line)
             
     # Save final dataframe
-    pd.concat(dfs).to_csv(OUTPUTS_PATH + '/outputs/sherpa_' + str(n_run) + '.csv')
+    pd.concat(dfs).to_csv(OUTPUTS_PATH + '/outputs/sherpa_' + str(n_run) + filename + '.csv')
 
 if __name__ == '__main__':
     main()
