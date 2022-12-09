@@ -18,7 +18,7 @@ DATA_PATH = os.path.abspath(os.path.join(CURRENT_PATH, "data"))
 # Constants  
 m = 0.938 # GeV/c^2
 gamma = -3 # Between -2 and -3
-size = 512 # size of r, T, p, and f_boundary
+size = 2048 # size of r, T, p, and f_boundary
 au = 150e6 # 150e6 m/AU
 r_limits = [0.4, 120] 
 T_limits = [0.001, 1000]
@@ -78,20 +78,20 @@ for ax, data, name in zip(axs, [T, f_boundary, r, p], ['T', 'f_boundary', 'r', '
 plt.show()
     
 # Save data
-with open(DATA_PATH + '/f_boundary.pkl', 'wb') as file:
+with open(DATA_PATH + '/f_boundary_2048.pkl', 'wb') as file:
     pkl.dump(f_boundary, file)
 
-with open(DATA_PATH + '/p.pkl', 'wb') as file:
+with open(DATA_PATH + '/p_2048.pkl', 'wb') as file:
     pkl.dump(p, file)
 
-with open(DATA_PATH + '/T.pkl', 'wb') as file:
+with open(DATA_PATH + '/T_2048.pkl', 'wb') as file:
     pkl.dump(T, file)
 
-with open(DATA_PATH + '/r.pkl', 'wb') as file:
+with open(DATA_PATH + '/r_2048.pkl', 'wb') as file:
     pkl.dump(r, file)
     
-with open(DATA_PATH + '/J.pkl', 'wb') as file:
+with open(DATA_PATH + '/J_2048.pkl', 'wb') as file:
     pkl.dump(J, file)
     
-with open(DATA_PATH + '/P_predict.pkl', 'wb') as file:
+with open(DATA_PATH + '/P_predict_2048.pkl', 'wb') as file:
     pkl.dump(P_predict, file)
