@@ -6,7 +6,7 @@
 #SBATCH --tasks-per-node=2
 #SBATCH --cpus-per-task=2
 #SBATCH --time 14-00:00:00
-#SBATCH --mem=24gb
+#SBATCH --mem=32gb
 #SBATCH --mail-user=linneamw@hawaii.edu
 #SBATCH --mail-type=BEGIN
 #SBATCH --mail-type=END

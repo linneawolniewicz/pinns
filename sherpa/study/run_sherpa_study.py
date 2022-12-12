@@ -25,20 +25,22 @@ from pinn import PINN
 
 
 def main():
+    size = 1024
+    
     # Load data
-    with open(DATA_PATH + '/f_boundary_2048.pkl', 'rb') as file:
+    with open(DATA_PATH + '/f_boundary_' + str(size) + '.pkl', 'rb') as file:
         f_boundary = pkl.load(file)
 
-    with open(DATA_PATH + '/p_2048.pkl', 'rb') as file:
+    with open(DATA_PATH + '/p_' + str(size) + '.pkl', 'rb') as file:
         p = pkl.load(file)
 
-    with open(DATA_PATH + '/T_2048.pkl', 'rb') as file:
+    with open(DATA_PATH + '/T_' + str(size) + '.pkl', 'rb') as file:
         T = pkl.load(file)
 
-    with open(DATA_PATH + '/r_2048.pkl', 'rb') as file:
+    with open(DATA_PATH + '/r_' + str(size) + '.pkl', 'rb') as file:
         r = pkl.load(file)
 
-    with open(DATA_PATH + '/P_predict_2048.pkl', 'rb') as file:
+    with open(DATA_PATH + '/P_predict_' + str(size) + '.pkl', 'rb') as file:
         P_predict = pkl.load(file)
 
     # Get upper and lower bounds
@@ -47,13 +49,12 @@ def main():
     min_f_log_space = -34.54346331847909
     max_f_log_space = 6.466899920699378
     f_bound = np.array([min_f_log_space, max_f_log_space], dtype='float32')
-    size = len(f_boundary[:, 0])
 
     # Sherpa
     parameters = [
         sherpa.Discrete(name='num_hidden_units', range=[100, 1_000]),
         sherpa.Choice(name='batchsize', range=[512, 1024, 2048, 4096]),
-        sherpa.Choice(name='boundary_batchsize', range=[512, 1024, 2048]),
+        sherpa.Choice(name='boundary_batchsize', range=[512, 1024]),
         sherpa.Choice(name='num_layers', range=[2, 3]),
         sherpa.Choice(name='sampling_method', range=['uniform', 'beta_3_1', 'beta_1_3']),
         sherpa.Choice(name='lr_schedule', range=['decay', 'oscillate']),
@@ -61,7 +62,7 @@ def main():
         sherpa.Choice(name='final_activation', range=['linear', 'sigmoid'])
     ]
     
-    n_run = 750
+    n_run = 1000
     study = sherpa.Study(
         parameters=parameters,
         algorithm=sherpa.algorithms.RandomSearch(max_num_trials=n_run),
@@ -70,7 +71,7 @@ def main():
 
     # Hyperparameters
     lr = 3e-3
-    epochs = 100
+    epochs = 50
     beta = 1e13
     lr_decay = 0.95
     patience = 20
@@ -81,7 +82,7 @@ def main():
     save = False
     load_epoch = -1
     should_r_lower_change = False
-    filename = '_lrSchedulesMorePatienceFullR'
+    filename = '_lrSchedulesMorePatienceFullRBoundaryBatchsize'
 
     # run Sherpa experiment
     dfs = []

@@ -20,28 +20,29 @@ sys.path.insert(1, PINN_PATH)
 from pinn import PINN
 
 # Load data
-with open(DATA_PATH + '/f_boundary.pkl', 'rb') as file:
+size = 1024
+
+with open(DATA_PATH + '/f_boundary_' + str(size) + '.pkl', 'rb') as file:
     f_boundary = pkl.load(file)
-    
-with open(DATA_PATH + '/p.pkl', 'rb') as file:
+
+with open(DATA_PATH + '/p_' + str(size) + '.pkl', 'rb') as file:
     p = pkl.load(file)
-    
-with open(DATA_PATH + '/T.pkl', 'rb') as file:
+
+with open(DATA_PATH + '/T_' + str(size) + '.pkl', 'rb') as file:
     T = pkl.load(file)
-    
-with open(DATA_PATH + '/r.pkl', 'rb') as file:
+
+with open(DATA_PATH + '/r_' + str(size) + '.pkl', 'rb') as file:
     r = pkl.load(file)
-    
-with open(DATA_PATH + '/P_predict.pkl', 'rb') as file:
+
+with open(DATA_PATH + '/P_predict_' + str(size) + '.pkl', 'rb') as file:
     P_predict = pkl.load(file)
-    
+
 # Get upper and lower bounds
 lb = np.log(np.array([p[0], r[0]], dtype='float32'))
 ub = np.log(np.array([p[-1], r[-1]], dtype='float32'))
 min_f_log_space = -34.54346331847909
 max_f_log_space = 6.466899920699378
 f_bound = np.array([min_f_log_space, max_f_log_space], dtype='float32')
-size = len(f_boundary[:, 0])
 
 ####################################### 
 # Adjust these to change training
