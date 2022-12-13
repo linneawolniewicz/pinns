@@ -48,26 +48,29 @@ f_bound = np.array([min_f_log_space, max_f_log_space], dtype='float32')
 # Adjust these to change training
 
 # Hyperparameters
-epochs = 500
-r_lower = np.log(119*150e6).astype('float32')
+epochs = 1000
+r_lower = np.log(0.4*150e6).astype('float32')
 beta = 1e13
-alpha_schedule = ''
+adam_beta1 = 0.8
+adam_beta2 = 0.999
+alpha_schedule = 'decay'
 lr_schedule = 'decay'
-patience = 3
-num_cycles = 10
-batchsize = 2048
-boundary_batchsize = 512
+patience = 30
+num_cycles = 1
+batchsize = 1024
+boundary_batchsize = 1024
 activation = 'selu'
-save = False
+save = True
 load_epoch = -1
-num_samples = 20_000
-lr = 0.00023639767679554095
-num_layers = 2
-num_hidden_units = 71
-sampling_method = 'uniform'
-final_activation = 'linear'
+num_samples = 20000
+lr = 3e-3
+num_layers = 3
+num_hidden_units = 500
+sampling_method = 'beta_3_1'
+final_activation = 'sigmoid'
 should_r_lower_change = False
-filename = 'sherpa_500_trial_297_rlower_119au'
+filename = 'fullR_adambeta108_decayAlpha_decaryLr_patience30_batchsizes1024_lr3e3_layers3_numUnits500_samplingBeta31_sigmoid'
+
 ########################################
 
 # Create model
@@ -82,7 +85,8 @@ pinn = PINN(inputs=inputs, outputs=outputs, lower_bound=lb, upper_bound=ub, p=p[
 pinn_loss, boundary_loss, predictions = pinn.fit(P_predict=P_predict, client=None, trial=None, beta=beta, batchsize=batchsize, 
                                                  boundary_batchsize=boundary_batchsize, epochs=epochs, lr=lr, size=size, save=save, load_epoch=load_epoch, 
                                                  lr_schedule=lr_schedule, alpha_schedule=alpha_schedule, r_lower=r_lower, patience=patience, num_cycles=num_cycles, 
-                                                 filename=filename, sampling_method=sampling_method, should_r_lower_change=should_r_lower_change)
+                                                 adam_beta1=adam_beta1, adam_beta2=adam_beta2, filename=filename, sampling_method=sampling_method, 
+                                                 should_r_lower_change=should_r_lower_change)
 
 # Save PINN outputs
 with open(OUTPUTS_PATH + '/pinn_loss_' + filename + '.pkl', 'wb') as file:
