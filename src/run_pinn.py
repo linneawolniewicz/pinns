@@ -51,25 +51,25 @@ f_bound = np.array([min_f_log_space, max_f_log_space], dtype='float32')
 epochs = 1000
 r_lower = np.log(0.4*150e6).astype('float32')
 beta = 1e13
-adam_beta1 = 0.8
+adam_beta1 = 0.9
 adam_beta2 = 0.999
-alpha_schedule = 'decay'
+alpha_schedule = 'static'
 lr_schedule = 'decay'
 patience = 30
 num_cycles = 1
 batchsize = 1024
-boundary_batchsize = 1024
+boundary_batchsize = 512
 activation = 'selu'
 save = True
 load_epoch = -1
 num_samples = 20000
 lr = 3e-3
-num_layers = 3
-num_hidden_units = 500
+num_layers = 2
+num_hidden_units = 150
 sampling_method = 'beta_3_1'
 final_activation = 'sigmoid'
 should_r_lower_change = False
-filename = 'fullR_adambeta108_decayAlpha_decaryLr_patience30_batchsizes1024_lr3e3_layers3_numUnits500_samplingBeta31_sigmoid'
+filename = 'fullR_adambeta109_staticAlpha_decaryLr_patience30_batchsizes1024_lr3e3_layers2_numUnits150_samplingBeta31_sigmoid'
 
 ########################################
 
