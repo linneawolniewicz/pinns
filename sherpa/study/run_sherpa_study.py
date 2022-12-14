@@ -53,13 +53,13 @@ def main():
     # Sherpa
     parameters = [
         sherpa.Discrete(name='num_hidden_units', range=[100, 1_000]),
-        sherpa.Choice(name='batchsize', range=[512, 1024, 2048, 4096]),
+        sherpa.Choice(name='batchsize', range=[512, 1024, 2048]),
+        sherpa.Continuous(name='adam_beta1', range=[0.5, 0.99]),
         sherpa.Choice(name='boundary_batchsize', range=[512, 1024]),
         sherpa.Choice(name='num_layers', range=[2, 3]),
         sherpa.Choice(name='sampling_method', range=['uniform', 'beta_3_1', 'beta_1_3']),
         sherpa.Choice(name='lr_schedule', range=['decay', 'oscillate']),
-        sherpa.Choice(name='alpha_schedule', range=['static', 'grow', 'decay']),
-        sherpa.Choice(name='final_activation', range=['linear', 'sigmoid'])
+        sherpa.Choice(name='alpha_schedule', range=['static', 'grow', 'decay'])
     ]
     
     n_run = 1000
@@ -71,18 +71,19 @@ def main():
 
     # Hyperparameters
     lr = 3e-3
-    epochs = 50
+    epochs = 100
     beta = 1e13
     lr_decay = 0.95
     patience = 20
     num_cycles = 3
     activation = 'selu'
+    final_activation = 'sigmoid'
     r_lower = np.log(0.4*150e6).astype('float32')
     num_samples = 20_000
     save = False
     load_epoch = -1
     should_r_lower_change = False
-    filename = '_lrSchedulesMorePatienceFullRBoundaryBatchsize'
+    filename = '_FullRAdamBeta1Sigmoid'
 
     # run Sherpa experiment
     dfs = []
@@ -98,8 +99,8 @@ def main():
         sampling_method = trial.parameters['sampling_method']
         lr_schedule = trial.parameters['lr_schedule']
         alpha_schedule = trial.parameters['alpha_schedule']
-        final_activation = trial.parameters['final_activation']
         num_layers = trial.parameters['num_layers']
+        adam_beta1 = trial.parameters['adam_beta1']
 
         # Create model
         inputs = tf.keras.Input((2))
@@ -113,7 +114,7 @@ def main():
         pinn_loss, boundary_loss, predictions = pinn.fit(P_predict=P_predict, client=None, trial=None, beta=beta, batchsize=batchsize, 
                                                          boundary_batchsize=boundary_batchsize, epochs=epochs, lr=lr, size=size, save=save, load_epoch=load_epoch, 
                                                          lr_schedule=lr_schedule, alpha_schedule=alpha_schedule, r_lower=r_lower, patience=patience, num_cycles=num_cycles,
-                                                         filename=filename, sampling_method=sampling_method, should_r_lower_change=should_r_lower_change)
+                                                         adam_beta1=adam_beta1, filename=filename, sampling_method=sampling_method, should_r_lower_change=should_r_lower_change)
         
         # Save model output dataframe
         df = pd.DataFrame()
@@ -128,6 +129,7 @@ def main():
         df['lr_schedule'] = lr_schedule
         df['patience'] = patience
         df['num_cycles'] = num_cycles
+        df['adam_beta1'] = adam_beta1
         df['epochs'] = epochs
         df['activation'] = activation
         df['final_activation'] = final_activation

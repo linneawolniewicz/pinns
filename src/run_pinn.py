@@ -52,7 +52,6 @@ epochs = 1000
 r_lower = np.log(0.4*150e6).astype('float32')
 beta = 1e13
 adam_beta1 = 0.9
-adam_beta2 = 0.999
 alpha_schedule = 'static'
 lr_schedule = 'decay'
 patience = 30
@@ -85,8 +84,7 @@ pinn = PINN(inputs=inputs, outputs=outputs, lower_bound=lb, upper_bound=ub, p=p[
 pinn_loss, boundary_loss, predictions = pinn.fit(P_predict=P_predict, client=None, trial=None, beta=beta, batchsize=batchsize, 
                                                  boundary_batchsize=boundary_batchsize, epochs=epochs, lr=lr, size=size, save=save, load_epoch=load_epoch, 
                                                  lr_schedule=lr_schedule, alpha_schedule=alpha_schedule, r_lower=r_lower, patience=patience, num_cycles=num_cycles, 
-                                                 adam_beta1=adam_beta1, adam_beta2=adam_beta2, filename=filename, sampling_method=sampling_method, 
-                                                 should_r_lower_change=should_r_lower_change)
+                                                 adam_beta1=adam_beta1, filename=filename, sampling_method=sampling_method, should_r_lower_change=should_r_lower_change)
 
 # Save PINN outputs
 with open(OUTPUTS_PATH + '/pinn_loss_' + filename + '.pkl', 'wb') as file:

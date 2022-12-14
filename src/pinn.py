@@ -155,7 +155,7 @@ class PINN(tf.keras.Model):
         
         sampling_method = Method for sampling r. Choices include 'beta_3_1' or 'beta_1_3', otherwise will sample uniformally in real space
         
-        adam_beta1, adam_beta2 = Values of beta1 and beta2 for the Adam optimizer
+        adam_beta1 = Value of beta1 for the Adam optimizer. Changes emphasis on momentum during training
         
         should_r_lower_change = Toggle for whether to decrease r_lower from self.upper_bound[1] to self.lower_bound[1] or not.
     
@@ -163,7 +163,7 @@ class PINN(tf.keras.Model):
     '''
     def fit(self, P_predict, client=None, trial=None, beta=1, batchsize=64, boundary_batchsize=16, epochs=20, lr=3e-3, 
             size=256, save=False, load_epoch=-1, lr_schedule='', alpha_schedule='', r_lower=17.909855, patience=3, num_cycles=10,
-            filename='', sampling_method='uniform', adam_beta1=0.9, adam_beta2=0.999, should_r_lower_change=False):
+            filename='', sampling_method='uniform', adam_beta1=0.9, should_r_lower_change=False):
         
         # If load == True, load the weights
         if load_epoch != -1:
@@ -190,7 +190,7 @@ class PINN(tf.keras.Model):
         # For each epoch, sample new values in the PINN and boundary areas and pass them to train_step
         for epoch in range(epochs):
             # Compile
-            opt = tf.keras.optimizers.Adam(learning_rate=lr, beta_1=adam_beta1, beta_2=adam_beta2)
+            opt = tf.keras.optimizers.Adam(learning_rate=lr, beta_1=adam_beta1)
             self.compile(optimizer=opt)
 
             sum_loss = np.zeros((steps_per_epoch,))
