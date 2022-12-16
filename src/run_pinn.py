@@ -48,27 +48,29 @@ f_bound = np.array([min_f_log_space, max_f_log_space], dtype='float32')
 # Adjust these to change training
 
 # Hyperparameters
-epochs = 1000
+epochs = 100
 r_lower = np.log(0.4*150e6).astype('float32')
 beta = 1e13
-adam_beta1 = 0.9
+adam_beta1 = 0.8
 alpha_schedule = 'static'
-lr_schedule = 'decay'
-patience = 30
-num_cycles = 1
+lr_schedule = 'oscillate'
+patience = 100
+num_cycles = 1_000
 batchsize = 1024
 boundary_batchsize = 512
 activation = 'selu'
 save = True
-load_epoch = -1
+load_epoch = 4_900
 num_samples = 20000
 lr = 3e-3
 num_layers = 2
-num_hidden_units = 150
-sampling_method = 'beta_3_1'
+num_hidden_units = 250
+sampling_method = 'uniform'
 final_activation = 'sigmoid'
 should_r_lower_change = False
-filename = 'fullR_adambeta109_staticAlpha_decaryLr_patience30_batchsizes1024_lr3e3_layers2_numUnits150_samplingBeta31_sigmoid'
+filename = ''
+
+filename = 'fullR_adambeta108_staticAlpha_oscillateLr_cycles1000_batchsizes1024_lr3e3_layers2_numUnits250_samplingUniform_sigmoid'
 
 ########################################
 
@@ -94,4 +96,4 @@ with open(OUTPUTS_PATH + '/boundary_loss_' + filename + '.pkl', 'wb') as file:
     pkl.dump(boundary_loss, file)
      
 with open(OUTPUTS_PATH + '/predictions_' + filename + '.pkl', 'wb') as file:
-    pkl.dump(predictions, file)
+    pkl.dump(predictions[:, :, -100:], file)

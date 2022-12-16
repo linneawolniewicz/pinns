@@ -4,10 +4,16 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 import sherpa
 import pickle as pkl
+import os
+import sys
 
 tfd = tfp.distributions
 tfm = tf.math
 tf.config.list_physical_devices(device_type=None)
+
+# Configure paths
+CURRENT_PATH = os.getcwd()
+OUTPUTS_PATH = os.path.abspath(os.path.join(CURRENT_PATH, "outputs"))
 
 ###################################################################################
 '''
@@ -167,7 +173,7 @@ class PINN(tf.keras.Model):
         
         # If load == True, load the weights
         if load_epoch != -1:
-            name = './outputs/ckpts/pinn_' + filename + '_epoch_' + str(load_epoch)
+            name = OUTPUTS_PATH + '/ckpts/pinn_' + filename + '_epoch_' + str(load_epoch)
             self.load_weights(name)
         
         # Initialize alpha based on alpha_schedule
@@ -258,7 +264,7 @@ class PINN(tf.keras.Model):
             # Save the model to a checkpoint
             should_save = (epoch%100 == 0) & (save == True)
             if should_save:
-                name = './outputs/ckpts/pinn_' + filename + '_epoch_' + str(epoch)
+                name = OUTPUTS_PATH + '/ckpts/pinn_' + filename + '_epoch_' + str(epoch)
                 self.save_weights(name, overwrite=True, save_format=None, options=None)
                 
             # Send metrics if running Sherpa optimization
