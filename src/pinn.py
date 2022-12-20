@@ -57,9 +57,9 @@ class PINN(tf.keras.Model):
         
         beta: weight on pinn_loss to scale it to the same order of magnitude as boundary_loss
         
-    Outputs: sum_loss, pinn_loss, boundary_loss, p, r, mask
+    Outputs: sum_loss, pinn_loss, boundary_loss
     '''
-    def train_step(self, p, r, p_boundary, r_boundary, f_boundary, beta, weight_pinn, weight_boundary):
+    def train_step(self, p, r, p_boundary, r_boundary, f_boundary, alpha, beta):
         with tf.GradientTape(persistent=True) as t2: 
             with tf.GradientTape(persistent=True) as t1: 
                 t1.watch(p)
@@ -111,7 +111,7 @@ class PINN(tf.keras.Model):
             
             # Calculate PINN loss and total loss
             pinn_loss = beta*(self.pinn_loss(p, r, df_dp, df_dr)[1] + self.pinn_loss(p_boundary, r_boundary, df_dp_boundary, df_dr_boundary)[1])
-            total_loss = weight_pinn*pinn_loss + weight_boundary*boundary_loss
+            total_loss = (1-alpha)*pinn_loss + alpha*boundary_loss
 
         # Backpropagation
         gradients = t2.gradient(total_loss, self.trainable_variables)
@@ -121,7 +121,6 @@ class PINN(tf.keras.Model):
         residuals = tfm.abs(self.pinn_loss(p, r, df_dp, df_dr)[0])
         threshold = tfm.reduce_mean(residuals)
         mask = tfm.greater(residuals, threshold)
-        # print(f'residuals: {residuals}, threshold {threshold} and resulting mask: {mask}')
         
         # Return losses and the mask
         return pinn_loss.numpy(), boundary_loss.numpy(), p, r, mask
@@ -154,6 +153,8 @@ class PINN(tf.keras.Model):
         
         lr_schedule: Determines the schedule lr will be on. Options include 'decay' and 'oscillate', else lr will remain constant
 
+        alpha_schedule: Determines the schedule alpha will be on. Choices include 'decay', 'grow', and 'oscillate'
+        
         patience: Number of epochs to check whether loss has decreased before decaying lr, if lr_schedule='decay'
         
         num_cycles = Number of cycles to oscillate lr for, if lr_schedule='oscillate'
@@ -164,8 +165,8 @@ class PINN(tf.keras.Model):
     
     Outputs: Losses for each equation (Total, PDE, Boundary Value), and predictions for each epoch.
     '''
-    def fit(self, P_predict, client=None, trial=None, beta=1e13, batchsize=64, boundary_batchsize=16, epochs=20, 
-            lr=3e-3, size=256, save=False, load_epoch=-1, lr_schedule='', patience=3, num_cycles=10, 
+    def fit(self, P_predict, client=None, trial=None, beta=1, batchsize=64, boundary_batchsize=16, epochs=20, 
+            lr=3e-3, size=256, save=False, load_epoch=-1, lr_schedule='', alpha_schedule='', patience=10, num_cycles=10, 
             filename='', adam_beta1=0.9):
         
         # If load == True, load the weights
@@ -186,8 +187,10 @@ class PINN(tf.keras.Model):
         total_boundary_loss = np.zeros((epochs,))
         predictions = np.zeros((size**2, 1, epochs))
         
-        weight_pinn = tf.Variable(1.0, dtype=tf.float32, trainable=True)
-        weight_boundary = tf.Variable(1.0, dtype=tf.float32, trainable=True)
+        # Initialize alpha based on alpha_schedule
+        if (alpha_schedule == 'decay'): alpha = 1.0
+        elif (alpha_schedule == 'grow'): alpha = 0.001
+        else: alpha = 0.5
         
         # For each epoch, sample new values in the PINN and boundary areas and pass them to train_step
         for epoch in range(epochs):
@@ -212,7 +215,6 @@ class PINN(tf.keras.Model):
                     
                     r_update = tf.where(mask, r_old, r_new).numpy()
                     r = tf.convert_to_tensor(r_update, dtype=tf.float32)
-                    # print(f'step: {step}. Old p: {p_old}. New p: {p}')
                 
                 # If there isn't a mask, keep p_new and r_new
                 else:
@@ -230,19 +232,24 @@ class PINN(tf.keras.Model):
                 r_boundary = tf.convert_to_tensor(upper_boundary, dtype=tf.float32)
                 
                 # Train and get loss and new p and r
-                step_pinn_loss, step_boundary_loss, p_old, r_old, mask = self.train_step(p, r, p_boundary, r_boundary, f_boundary, beta, weight_pinn, weight_boundary)
+                step_pinn_loss, step_boundary_loss, p_old, r_old, mask = self.train_step(p, r, p_boundary, r_boundary, f_boundary, alpha, beta)
                 pinn_loss[step] = step_pinn_loss
                 boundary_loss[step] = step_boundary_loss
             
             # Sum losses
             total_pinn_loss[epoch] = np.sum(pinn_loss)
             total_boundary_loss[epoch] = np.sum(boundary_loss)
-            print(f'Epoch {epoch}. lr: {lr:.10f}, weight_pinn: {weight_pinn.numpy():.3f}, weight_boundary: {weight_boundary.numpy():.3f}. ' + 
-                  f'Training losses: pinn: {total_pinn_loss[epoch]}, boundary: {total_boundary_loss[epoch]:.10f}, ' +
-                  f'weighted total: {((weight_boundary*total_boundary_loss[epoch])+(weight_pinn*total_pinn_loss[epoch])):.10f}')
+            print(f'Epoch {epoch}. Current alpha: {alpha:.6f}, lr: {lr:.10f}, ' + 
+                  f'Training losses: pinn: {total_pinn_loss[epoch]:.10f}, boundary: {total_boundary_loss[epoch]:.10f}, ' +
+                  f'weighted total: {((alpha*total_boundary_loss[epoch])+((1-alpha)*total_pinn_loss[epoch])):.10f}')
             
             # Predict
             predictions[:, :, epoch] = self.predict(P_predict, batchsize)
+            
+            # Adjust alpha based on the schedule, only every 10 epochs
+            if (epoch%10 == 0):
+                if alpha_schedule=='decay': alpha = alpha*0.995
+                elif (alpha_schedule=='grow') & (alpha <= 1): alpha = alpha*1.015
 
             # Check if loss has decreased
             hasnt_decreased = False
@@ -334,7 +341,7 @@ class PINN(tf.keras.Model):
     Inputs: 
         just_decreased: Boolean, True if lr decreased last epoch and False if not
         
-        current_lt: float, Current learning rate
+        lr: float, Current learning rate
         
         min_lr: float, minimum learning rate to decrease to. In literature defined as 1/R smaller than max_lr
         

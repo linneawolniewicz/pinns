@@ -49,6 +49,7 @@ epochs = 500
 beta = 1e13
 adam_beta1 = 0.9
 lr_schedule = 'decay'
+alpha_schedule = 'decay'
 patience = 30
 num_cycles = 2
 batchsize = 2048
@@ -61,7 +62,7 @@ lr = 3e-3
 num_layers = 3
 num_hidden_units = 224
 final_activation = 'sigmoid'
-filename = '3layers_224units_evolutionarySampling_and_adaptiveLoss'
+filename = '3layers_224units_evolutionarySampling_and_decayAlpha'
 
 # Create model
 inputs = tf.keras.Input((2))
@@ -73,8 +74,8 @@ outputs = tf.keras.layers.Dense(1, activation=final_activation)(x_)
 # Train the PINN
 pinn = PINN(inputs=inputs, outputs=outputs, lower_bound=lb, upper_bound=ub, p=p[:, 0], f_boundary=f_boundary[:, 0], f_bound=f_bound, size=size, num_samples=num_samples)
 pinn_loss, boundary_loss, predictions = pinn.fit(P_predict=P_predict, client=None, trial=None, beta=beta, batchsize=batchsize, boundary_batchsize=boundary_batchsize, epochs=epochs, 
-                                                 lr=lr, size=size, save=save, load_epoch=load_epoch, lr_schedule=lr_schedule, patience=patience, num_cycles=num_cycles, 
-                                                 adam_beta1=adam_beta1, filename=filename)
+                                                 lr=lr, size=size, save=save, load_epoch=load_epoch, lr_schedule=lr_schedule, alpha_schedule=alpha_schedule, patience=patience, 
+                                                 num_cycles=num_cycles, adam_beta1=adam_beta1, filename=filename)
 
 # Save PINN outputs
 with open(OUTPUTS_PATH + '/pinn_loss_' + filename + '.pkl', 'wb') as file:
