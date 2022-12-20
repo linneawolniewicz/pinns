@@ -44,35 +44,24 @@ min_f_log_space = -34.54346331847909
 max_f_log_space = 6.466899920699378
 f_bound = np.array([min_f_log_space, max_f_log_space], dtype='float32')
 
-####################################### 
-# Adjust these to change training
-
 # Hyperparameters
-epochs = 100
-r_lower = np.log(0.4*150e6).astype('float32')
+epochs = 500
 beta = 1e13
-adam_beta1 = 0.8
-alpha_schedule = 'static'
-lr_schedule = 'oscillate'
-patience = 100
-num_cycles = 1_000
-batchsize = 1024
+adam_beta1 = 0.9
+lr_schedule = 'decay'
+patience = 30
+num_cycles = 2
+batchsize = 2048
 boundary_batchsize = 512
 activation = 'selu'
 save = True
-load_epoch = 4_900
-num_samples = 20000
+load_epoch = -1
+num_samples = 20_000
 lr = 3e-3
-num_layers = 2
-num_hidden_units = 250
-sampling_method = 'uniform'
+num_layers = 3
+num_hidden_units = 224
 final_activation = 'sigmoid'
-should_r_lower_change = False
-filename = ''
-
-filename = 'fullR_adambeta108_staticAlpha_oscillateLr_cycles1000_batchsizes1024_lr3e3_layers2_numUnits250_samplingUniform_sigmoid'
-
-########################################
+filename = '3layers_224units_evolutionarySampling_and_adaptiveLoss'
 
 # Create model
 inputs = tf.keras.Input((2))
@@ -83,10 +72,9 @@ outputs = tf.keras.layers.Dense(1, activation=final_activation)(x_)
 
 # Train the PINN
 pinn = PINN(inputs=inputs, outputs=outputs, lower_bound=lb, upper_bound=ub, p=p[:, 0], f_boundary=f_boundary[:, 0], f_bound=f_bound, size=size, num_samples=num_samples)
-pinn_loss, boundary_loss, predictions = pinn.fit(P_predict=P_predict, client=None, trial=None, beta=beta, batchsize=batchsize, 
-                                                 boundary_batchsize=boundary_batchsize, epochs=epochs, lr=lr, size=size, save=save, load_epoch=load_epoch, 
-                                                 lr_schedule=lr_schedule, alpha_schedule=alpha_schedule, r_lower=r_lower, patience=patience, num_cycles=num_cycles, 
-                                                 adam_beta1=adam_beta1, filename=filename, sampling_method=sampling_method, should_r_lower_change=should_r_lower_change)
+pinn_loss, boundary_loss, predictions = pinn.fit(P_predict=P_predict, client=None, trial=None, beta=beta, batchsize=batchsize, boundary_batchsize=boundary_batchsize, epochs=epochs, 
+                                                 lr=lr, size=size, save=save, load_epoch=load_epoch, lr_schedule=lr_schedule, patience=patience, num_cycles=num_cycles, 
+                                                 adam_beta1=adam_beta1, filename=filename)
 
 # Save PINN outputs
 with open(OUTPUTS_PATH + '/pinn_loss_' + filename + '.pkl', 'wb') as file:
